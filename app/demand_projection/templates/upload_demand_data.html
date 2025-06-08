@@ -2,31 +2,54 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Upload Demand Data</title>
+    <title>Upload & Configure Demand Data</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
-        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
-        h1 { color: #333; text-align: center; }
-        ul { list-style: none; padding: 0; margin-bottom: 15px; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 800px; margin: 20px auto; }
+        h1, h2, h3 { color: #333; text-align: center; }
+        ul.flash-messages { list-style: none; padding: 0; margin-bottom: 15px; }
         li.success { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
-        li.error { background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.error, li.danger { background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.warning { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.info { background-color: #cce5ff; color: #004085; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+
         .button { background-color: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; border: none; cursor: pointer; font-size: 1em; }
         .button:hover { background-color: #0056b3; }
-        input[type="file"] { margin-bottom:15px; display: block; }
+        .button-save-config { background-color: #28a745; }
+        .button-save-config:hover { background-color: #218838; }
+
+        input[type="file"], input[type="text"], input[type="number"] { margin-bottom:10px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: calc(100% - 18px); }
+        label { font-weight: bold; display: block; margin-top: 10px; margin-bottom: 3px; }
+
         .nav-link { display: inline-block; margin-top:15px; color: #007bff; text-decoration: none; }
         .nav-link:hover{ text-decoration: underline; }
-        .project-info { margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; }
-        .warning { color: #856404; background-color: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+
+        .section { border: 1px solid #ddd; padding: 15px; margin-top: 20px; border-radius: 5px; background-color: #f9f9f9; }
+        .section h2 { text-align: left; margin-top: 0; font-size: 1.5em; }
+        .sector-config { border: 1px solid #eee; padding: 10px; margin-bottom: 10px; background-color: #fff; }
+        .sector-config h3 { font-size: 1.2em; margin-top: 0; margin-bottom: 10px; background-color: #f0f0f0; padding: 5px; border-radius: 3px; text-align: left;}
+        .model-config { margin-left: 20px; padding-bottom:10px; margin-bottom:10px; border-bottom: 1px dashed #eee; }
+        .model-config:last-child { border-bottom: none; }
+        .model-config label { font-weight: normal; display: inline-block; margin-right: 10px;}
+        .model-config input[type="checkbox"] { width: auto; margin-right: 5px;}
+        .model-config .param-input { margin-left: 15px; }
+        .model-config .param-input label { font-size: 0.9em; }
+        .model-config .param-input input { width: auto; padding: 5px; margin-left:5px; }
+
+        .file-status-box { padding: 10px; border: 1px solid #ccc; margin-bottom: 15px; border-radius: 4px; }
+        .file-status-box.valid { background-color: #d4edda; border-color: #c3e6cb; }
+        .file-status-box.invalid { background-color: #f8d7da; border-color: #f5c6cb; }
+        .file-status-box.notfound { background-color: #fff3cd; border-color: #ffeeba; }
+
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Upload Demand Input File</h1>
-        <p style="text-align: center;">Standardized name after upload: <strong>input_demand_file.xlsx</strong></p>
+        <h1>Demand Projection Setup</h1>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
-            <ul>
+            <ul class="flash-messages">
             {% for category, message in messages %}
               <li class="{{ category }}">{{ message }}</li>
             {% endfor %}
@@ -34,24 +57,156 @@
           {% endif %}
         {% endwith %}
 
-        {% if not current_project_path_abs_g %}
+        {% if not active_project_path %}
             <p class="warning">No project is currently loaded. Please load or create a project first from the <a href="{{ url_for('main.home') }}">home page</a>.</p>
         {% else %}
-            <div class="project-info">
-                Current Project: <strong>{{ current_project_name_g }}</strong>
-                <br>
-                <small>Location: {{ current_project_path_abs_g }}</small>
+            <p>Current Project: <strong>{{ current_project_name_g }}</strong></p>
+
+            <!-- File Upload Section -->
+            <div class="section">
+                <h2>1. Upload Demand Data Excel File</h2>
+                <form method="POST" action="{{ url_for('demand_projection.upload_demand_file') }}" enctype="multipart/form-data">
+                    <div>
+                        <label for="file">Select .xlsx file (Standardized name after upload: <strong>input_demand_file.xlsx</strong>):</label>
+                        <input type="file" id="file" name="file" accept=".xlsx" required>
+                    </div>
+                    <button type="submit" class="button">Upload/Replace File</button>
+                </form>
             </div>
-            <form method="POST" action="{{ url_for('demand_projection.upload_demand_file') }}" enctype="multipart/form-data">
-                <div>
-                    <label for="file">Select .xlsx file:</label>
-                    <input type="file" id="file" name="file" accept=".xlsx" required>
+
+            <!-- File Status and Configuration Section -->
+            {% if excel_file_exists %}
+                <div class="file-status-box {{ 'valid' if input_file_validated else 'invalid' }}">
+                    <strong>Excel File Status:</strong> {{ excel_validation_message }}
                 </div>
-                <button type="submit" class="button">Upload Demand File</button>
-            </form>
-        {% endif %}
-        <br>
-        <a href="{{ url_for('main.home') }}" class="nav-link">Back to Home</a>
+            {% else %}
+                 <div class="file-status-box notfound">
+                    <strong>Excel File Status:</strong> {{ excel_validation_message }}
+                </div>
+            {% endif %}
+
+
+            {% if input_file_validated and available_sectors %}
+            <div class="section">
+                <h2>2. Configure Forecast Models</h2>
+                <form method="POST" action="{{ url_for('demand_projection.save_demand_configuration_route') }}">
+
+                    <!-- Global Settings -->
+                    <h3>Global Settings</h3>
+                    <div>
+                        <label for="global_target_years">Target Years (comma-separated, e.g., 2025,2030,2035):</label>
+                        <input type="text" id="global_target_years" name="global_target_years"
+                               value="{{ demand_config.global_settings.target_years | join(',') }}">
+                    </div>
+                    <div>
+                        <label for="global_forecast_start_year">Forecast Start Year (optional, overrides default):</label>
+                        <input type="number" id="global_forecast_start_year" name="global_forecast_start_year"
+                               value="{{ demand_config.global_settings.forecast_start_year if demand_config.global_settings.forecast_start_year is not none else '' }}" placeholder="e.g., {{ (demand_config.historical_data_summary.max_year | default(0, true)) + 1 }}">
+                    </div>
+                    <div>
+                        <input type="checkbox" id="global_exclude_covid" name="global_exclude_covid"
+                               {% if demand_config.global_settings.exclude_covid_years %}checked{% endif %}>
+                        <label for="global_exclude_covid" style="display:inline; font-weight:normal;">Exclude COVID-19 period years (if defined in model logic)</label>
+                    </div>
+                    <hr>
+
+                    <!-- Sector-Specific Models -->
+                    <h3>Sector Models</h3>
+                    {% for sector in available_sectors %}
+                    <div class="sector-config">
+                        <h3>Sector: {{ sector }}</h3>
+                        {% for model_code, model_details in model_options.items() %}
+                            {% set current_model_config = (demand_config.sector_models.get(sector) or []) | selectattr('model_name', 'equalto', model_code) | first %}
+                            <div class="model-config">
+                                <input type="checkbox" id="{{ sector }}_{{ model_code }}_enabled" name="{{ sector }}|{{ model_code }}|enabled"
+                                       {% if current_model_config and current_model_config.enabled %}checked{% endif %}>
+                                <label for="{{ sector }}_{{ model_code }}_enabled">{{ model_details.label }} ({{ model_code }})</label>
+
+                                {% if model_details.params %}
+                                <div class="param-input">
+                                {% for param_name, param_attrs in model_details.params.items() %}
+                                    <label for="{{ sector }}_{{ model_code }}_{{ param_name }}">{{ param_attrs.label }}:</label>
+                                    {% if param_attrs.type == "number" %}
+                                    <input type="number" id="{{ sector }}_{{ model_code }}_{{ param_name }}"
+                                           name="{{ sector }}|{{ model_code }}|{{ param_name }}"
+                                           value="{{ (current_model_config.parameters.get(param_name) if current_model_config else param_attrs.default) | default(param_attrs.default, true) }}">
+                                    {% elif param_attrs.type == "text" %}
+                                    <input type="text" id="{{ sector }}_{{ model_code }}_{{ param_name }}"
+                                           name="{{ sector }}|{{ model_code }}|{{ param_name }}"
+                                           value="{{ (current_model_config.parameters.get(param_name) if current_model_config else param_attrs.default) | default(param_attrs.default, true) }}">
+                                    {% elif param_attrs.type == "checkbox" %}
+                                     <input type="checkbox" id="{{ sector }}_{{ model_code }}_{{ param_name }}"
+                                           name="{{ sector }}|{{ model_code }}|{{ param_name }}"
+                                           {% if (current_model_config.parameters.get(param_name) if current_model_config else param_attrs.default) %}checked{% endif %}>
+                                    {% endif %}
+                                    <small> (Default: {{param_attrs.default}})</small><br>
+                                {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="button button-save-config" style="margin-top:15px;">Save Demand Configuration</button>
+                </form>
+            </div>
+            {% elif excel_file_exists and not input_file_validated %}
+                 <p class="warning">The uploaded Excel file has validation issues (see message above). Please correct and re-upload before configuring models.</p>
+            {% else %}
+                <p class="info">Upload a valid demand data Excel file to enable model configuration.</p>
+            {% endif %}
+
+            <!-- Run Forecast Section -->
+            {% if input_file_validated %}
+            <div class="section">
+                <h2>3. Run Forecast</h2>
+                <form method="POST" action="{{ url_for('demand_projection.run_forecast_route') }}">
+                    <div>
+                        <label for="scenario_name">Scenario Name:</label>
+                        <input type="text" id="scenario_name" name="scenario_name" value="Forecast_{{ '%Y%m%d_%H%M%S'.strftime(datetime.utcnow()) }}" required>
+                        <small>A unique name for this forecast run. Defaults to current timestamp if left as is, but a descriptive name is better.</small>
+                    </div>
+                    {# Target years are now read from demand_config.json by the route, so no need for form inputs here unless for overriding #}
+                    {# Example: <p>Forecast will use target years: {{ demand_config.global_settings.target_years | join(', ') if demand_config and demand_config.global_settings and demand_config.global_settings.target_years else 'Not configured' }}</p> #}
+                    <button type="submit" class="button" style="margin-top:15px; background-color: #ffc107; color: #212529;">Run Forecast</button>
+                </form>
+            </div>
+            {% endif %}
+
+
+        {% endif %} {# End of project loaded check #}
+        <hr style="margin-top:30px;">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <a href="{{ url_for('demand_projection.results_page_route') }}" class="button" style="background-color: #17a2b8;">View Forecast Results</a>
+        </div>
+        <a href="{{ url_for('main.home') }}" class="nav-link" style="display: block; text-align: center;">Back to Project Home</a>
     </div>
 </body>
 </html>
+<!-- Jinja filter for timestamp - needs to be registered in Flask app if used like this:
+    @app.template_filter('strftime')
+    def _jinja2_filter_datetime(date, fmt=None):
+        # If date is a float or int, assume it's a Unix timestamp
+        if isinstance(date, (int, float)):
+            date = datetime.fromtimestamp(date)
+        if fmt:
+            return date.strftime(fmt)
+        else:
+            return date.strftime('%Y-%m-%d %H:%M:%S')
+    For simplicity, removing the strftime filter from the template for now,
+    and relying on the user to type or the route to default the scenario name.
+    A simpler default in template: value="default_scenario"
+-->
+
+<!-- Corrected Scenario Name default value -->
+<!-- <input type="text" id="scenario_name" name="scenario_name" value="default_scenario" required> -->
+<!-- The route will handle default if empty, so 'required' is good. -->
+<!-- Or, if you want a dynamic default like a timestamp, it's better to set it in the route if the field is submitted empty. -->
+<!-- For now, the route handles default if empty. The template has a dynamic value using Jinja. -->
+<!-- To use datetime.utcnow() in template, it must be passed from the route. -->
+<!-- Simpler: value="MyForecastScenario" as placeholder -->
+<!-- Let's use what I had: value="Forecast_{{ '%Y%m%d_%H%M%S'.strftime(datetime.utcnow()) }}"
+     but this requires `datetime` to be available in template context.
+     It's better to pass `now_timestamp` from the route or handle default in route.
+     I will adjust the route to provide `now_timestamp` for the default scenario name.
+-->

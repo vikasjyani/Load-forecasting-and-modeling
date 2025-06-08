@@ -3,6 +3,7 @@ Werkzeug
 pandas
 numpy
 openpyxl
+scikit-learn
 celery
 redis
 Flask-SocketIO
