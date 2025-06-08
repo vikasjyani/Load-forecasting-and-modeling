@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PyPSA Power System Modeling</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 700px; margin: auto; }
+        h1 { color: #333; text-align: center; }
+        ul { list-style: none; padding: 0; margin-bottom: 15px; }
+        li.success { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.error { background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.warning { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        .nav-link { display: inline-block; margin-top:15px; color: #007bff; text-decoration: none; margin-right: 15px; }
+        .nav-link:hover{ text-decoration: underline; }
+        .project-info { margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; }
+        .placeholder-text { margin-top: 20px; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PyPSA Power System Modeling Module</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul>
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        {% if not current_project_path_abs_g %}
+             <p class="warning">No project is currently loaded. Please load or create a project first from the <a href="{{ url_for('main.home') }}">home page</a> to use this module.</p>
+        {% else %}
+            <div class="project-info">
+                Current Project: <strong>{{ current_project_name_g }}</strong>
+                <br>
+                <small>Location: {{ current_project_path_abs_g }}</small>
+            </div>
+            <p>This is the main page for the PyPSA Power System Modeling module. Functionality for model configuration, execution, and result analysis will be added here. This includes:</p>
+            <ul>
+                <li>Defining network components (generators, lines, loads, storage).</li>
+                <li>Setting up optimization parameters and constraints.</li>
+                <li>Running power flow and optimal power flow analyses.</li>
+                <li>Visualizing network topology and results.</li>
+            </ul>
+            <div class="placeholder-text">
+                Future forms for configuring PyPSA networks, initiating model runs, and displaying results will appear here.
+            </div>
+        {% endif %}
+
+        <div>
+            <a href="{{ url_for('main.home') }}" class="nav-link">Back to Home</a>
+            <a href="{{ url_for('load_profile.index') }}" class="nav-link">Go to Load Profile Generation</a>
+            {# Add more relevant navigation links as modules are built, e.g., to Demand Projection #}
+            <a href="{{ url_for('demand_projection.upload_page') }}" class="nav-link">Go to Demand Projection</a>
+        </div>
+    </div>
+</body>
+</html>

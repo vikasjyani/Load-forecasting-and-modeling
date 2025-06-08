@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 800px; margin: auto; }
+        h1 { color: #333; text-align: center; }
+        ul { list-style: none; padding: 0; margin-bottom: 15px; }
+        li.success { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.error { background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.warning { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.info { background-color: #cce5ff; color: #004085; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        .nav-list { list-style-type: disc; padding-left: 20px; } /* For navigation links */
+        .nav-list li a { text-decoration: none; color: #007bff; }
+        .nav-list li a:hover { text-decoration: underline; }
+        .project-info { margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; }
+        .placeholder-text { margin-top: 20px; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Panel</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul>
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        {% if current_project_path_abs_g %} {# Check for project path as it's more definitive than just name #}
+            <div class="project-info">
+                Current Project: <strong>{{ current_project_name_g }}</strong>
+                <br>
+                <small>Location: {{ current_project_path_abs_g }}</small>
+            </div>
+        {% else %}
+            <p class="warning">No project is currently loaded. Some admin functionalities might be project-specific or disabled.</p>
+        {% endif %}
+
+        <p>This is the main page for the Admin Panel. System monitoring, global settings, user management (future), feature toggles, and other administrative tools will be available here.</p>
+
+        <div class="placeholder-text">
+            Future admin tools will be displayed here, such as:
+            <ul>
+                <li>System Health Monitoring</li>
+                <li>User Management Interface</li>
+                <li>Configuration Settings Editor</li>
+                <li>Task Queue Management (Celery)</li>
+            </ul>
+        </div>
+
+        <h2>Quick Navigation</h2>
+        <ul class="nav-list">
+            <li><a href="{{ url_for('main.home') }}">Application Home</a></li>
+            <li><a href="{{ url_for('demand_projection.upload_page') }}">Demand Projection Module</a></li>
+            <li><a href="{{ url_for('load_profile.index') }}">Load Profile Generation Module</a></li>
+            <li><a href="{{ url_for('pypsa_modeling.index') }}">PyPSA Modeling Module</a></li>
+            <!-- Add other key links as needed -->
+        </ul>
+    </div>
+</body>
+</html>

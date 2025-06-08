@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Project Home</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; }
+        ul { list-style: none; padding: 0; }
+        li { background-color: #eee; margin-bottom: 5px; padding: 10px; border-radius: 4px; }
+        li a { text-decoration: none; color: #007bff; }
+        li a:hover { text-decoration: underline; }
+        .button { background-color: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; border: none; cursor: pointer; }
+        .button:hover { background-color: #0056b3; }
+        .flash-messages { list-style: none; padding: 0; margin-bottom: 15px; }
+        .flash-messages .success { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        .flash-messages .error { background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        .current-project { margin-top: 20px; padding: 15px; background-color: #e9ecef; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome!</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-messages">
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        {% if current_project_name_g %}
+            <div class="current-project">
+                <h2>Current Project</h2>
+                <p><strong>Name:</strong> {{ current_project_name_g }}</p>
+                <p><strong>Folder:</strong> {{ current_project_folder_g }}</p>
+                <p><strong>Path:</strong> {{ current_project_path_abs_g }}</p>
+            </div>
+        {% else %}
+            <p>No project currently loaded.</p>
+        {% endif %}
+
+        <h2>Manage Projects</h2>
+        <p>
+            <a href="{{ url_for('main.create_project_page') }}" class="button">Create New Project</a>
+            <a href="{{ url_for('main.load_project_page') }}" class="button">Load Existing Project</a>
+        </p>
+
+        <h2>Recent Projects</h2>
+        {% if recent_projects %}
+            <ul>
+                {% for project in recent_projects %}
+                    <li>
+                        <strong>{{ project.project_name }}</strong> ({{ project.project_folder }})
+                        <form action="{{ url_for('main.load_project_route') }}" method="POST" style="display: inline; margin-left: 10px;">
+                            <input type="hidden" name="project_folder" value="{{ project.project_folder }}">
+                            <button type="submit" class="button" style="padding: 5px 10px; font-size: 0.9em;">Load</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No recent projects.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

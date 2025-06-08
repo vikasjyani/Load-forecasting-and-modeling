@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Load Profile Generation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 700px; margin: auto; }
+        h1 { color: #333; text-align: center; }
+        ul { list-style: none; padding: 0; margin-bottom: 15px; }
+        li.success { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.error { background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.warning { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        .nav-link { display: inline-block; margin-top:15px; color: #007bff; text-decoration: none; margin-right: 15px; }
+        .nav-link:hover{ text-decoration: underline; }
+        .project-info { margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; }
+        .placeholder-text { margin-top: 20px; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Load Profile Generation Module</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul>
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        {% if not current_project_path_abs_g %}
+            {# Message is now flashed from the route, but this is a fallback or can be styled differently #}
+            <p style="color:red;">Reminder: No project is currently loaded. Functionality may be limited. Please load or create a project from the <a href="{{ url_for('main.home') }}">home page</a>.</p>
+        {% else %}
+            <div class="project-info">
+                Current Project: <strong>{{ current_project_name_g }}</strong>
+                <br>
+                <small>Location: {{ current_project_path_abs_g }}</small>
+            </div>
+            <p>This is the main page for the Load Profile Generation module. Functionality will be added here to:</p>
+            <ul>
+                <li>Define customer segments and their consumption patterns.</li>
+                <li>Input parameters for typical load shapes (e.g., residential, commercial, industrial).</li>
+                <li>Generate aggregated and individual load profiles.</li>
+                <li>Visualize generated profiles.</li>
+            </ul>
+            <div class="placeholder-text">
+                Future forms, data displays, and control options for generating load profiles will appear here.
+            </div>
+        {% endif %}
+
+        <div>
+            <a href="{{ url_for('main.home') }}" class="nav-link">Back to Home</a>
+            <a href="{{ url_for('demand_projection.upload_page') }}" class="nav-link">Go to Demand Projection</a>
+            {# Add more relevant navigation links as modules are built #}
+        </div>
+    </div>
+</body>
+</html>

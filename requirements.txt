@@ -1,0 +1,9 @@
+Flask
+Werkzeug
+pandas
+numpy
+openpyxl
+celery
+redis
+Flask-SocketIO
+gunicorn
