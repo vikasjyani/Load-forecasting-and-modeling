@@ -22,10 +22,46 @@ DEFAULT_DEMAND_CONFIG = {
 }
 
 MODEL_OPTIONS = {
-    "SLR": {"label": "Simple Linear Regression", "params": {}},
-    "WAM": {"label": "Weighted Average Model", "params": {"window_size": {"type": "number", "default": 3, "label": "Window Size"}}},
-    "MLR": {"label": "Multiple Linear Regression", "params": {"independent_vars": {"type": "text", "default": "GDP,Population", "label": "Independent Variables (comma-separated)"}}},
-    # Add more models and their parameters here
+    "SLR": {
+        "label": "Simple Linear Regression", # Changed "name" to "label" for consistency with other UI elements
+        "params": { # Renamed "parameters" to "params" for brevity, matching usage
+            "confidence_pct": {"type": "float", "default": 0.1, "label": "Confidence Pct (0.0-1.0)", "min": 0.01, "max": 0.5, "step": 0.01}
+        }
+    },
+    "WAM": {
+        "label": "Weighted Average Method",
+        "params": {
+            "window_size_option": {
+                "type": "select_with_custom",
+                "label": "Window Size (Years)",
+                "options": [
+                    {"value": "3", "label": "3 Years (Short-term)"},
+                    {"value": "5", "label": "5 Years (Medium-term)"},
+                    {"value": "7", "label": "7 Years (Long-term)"}, # Changed 10 to 7 for variety
+                    {"value": "custom", "label": "Custom Value"}
+                ],
+                "default_select": "3",
+                "custom_input_name": "window_size_custom",
+                "custom_input_default": 3,
+                "custom_input_type": "number",
+                "custom_input_min": 1,
+                "custom_input_max": 20 # Max historical years to average
+            },
+            # The actual parameter stored in demand_config.json for WAM will be 'window_size' (numeric)
+            "confidence_pct": {"type": "float", "default": 0.1, "label": "Confidence Pct (0.0-1.0)", "min": 0.01, "max": 0.5, "step": 0.01}
+        }
+    },
+    "MLR": {
+        "label": "Multiple Linear Regression",
+        "params": {
+            "independent_vars": {"type": "text", "default": "GDP,Population", "label": "Independent Variables (comma-separated)"}, # Moved from main MLR in previous plan
+            "confidence_pct": {"type": "float", "default": 0.1, "label": "Confidence Pct (0.0-1.0)", "min": 0.01, "max": 0.5, "step": 0.01}
+        }
+    }
+    # Note: The actual 'window_size' (numeric) will be derived from 'window_size_option'
+    # and 'window_size_custom' in the route logic before saving to demand_config.json
+    # and before passing to the forecast_wam model.
+    # The 'confidence_pct' was added to all models for consistency.
 }
 
 
@@ -195,6 +231,57 @@ def generate_consolidated_results(project_path_abs, scenario_name, main_forecast
     except Exception as e:
         print(f"Error saving consolidated results to CSV {consolidated_filepath}: {e}") # Replace with logging
         return None
+
+# ---- Display Settings File Handling ----
+
+def get_display_settings_filepath(project_path_abs, scenario_base_name):
+    """Constructs the path to the display_settings_SCENARIO.json file."""
+    results_dir = os.path.join(project_path_abs, 'results', 'demand_projection')
+    return os.path.join(results_dir, f"display_settings_{scenario_base_name}.json")
+
+def load_display_settings(project_path_abs, scenario_base_name):
+    """Loads display settings. (Helper, actual loading might be direct in route)"""
+    filepath = get_display_settings_filepath(project_path_abs, scenario_base_name)
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"Error loading display settings from {filepath}: {e}")
+            return {} # Return empty if error
+    return {} # Return empty if not found
+
+def save_display_settings(project_path_abs, scenario_base_name, new_settings_data):
+    """
+    Saves display settings, merging new_settings_data with existing data.
+    Specifically, new_settings_data is expected to be a dict like {'primary_models': {...}}
+    or {'td_losses': [...]}, etc.
+    """
+    filepath = get_display_settings_filepath(project_path_abs, scenario_base_name)
+
+    current_settings = {}
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r') as f:
+                current_settings = json.load(f)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"Warning: Could not read existing display settings from {filepath}. Will overwrite if saving. Error: {e}")
+            current_settings = {} # Start fresh if existing is corrupt
+
+    # Merge new data. If new_settings_data contains 'primary_models', it will update that key.
+    # If it contains other keys, they will be added/updated too.
+    for key, value in new_settings_data.items():
+        current_settings[key] = value
+
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w') as f:
+            json.dump(current_settings, f, indent=2)
+        print(f"Display settings saved successfully to {filepath}")
+        return True
+    except Exception as e:
+        print(f"Error saving display settings to {filepath}: {e}")
+        return False
 
 # ---- Input Excel File Validation and Parsing ----
 

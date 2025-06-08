@@ -18,7 +18,7 @@
         .button-save-config { background-color: #28a745; }
         .button-save-config:hover { background-color: #218838; }
 
-        input[type="file"], input[type="text"], input[type="number"] { margin-bottom:10px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: calc(100% - 18px); }
+        input[type="file"], input[type="text"], input[type="number"], input[type="float"], select { margin-bottom:10px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: calc(100% - 18px); box-sizing: border-box; }
         label { font-weight: bold; display: block; margin-top: 10px; margin-bottom: 3px; }
 
         .nav-link { display: inline-block; margin-top:15px; color: #007bff; text-decoration: none; }
@@ -28,13 +28,15 @@
         .section h2 { text-align: left; margin-top: 0; font-size: 1.5em; }
         .sector-config { border: 1px solid #eee; padding: 10px; margin-bottom: 10px; background-color: #fff; }
         .sector-config h3 { font-size: 1.2em; margin-top: 0; margin-bottom: 10px; background-color: #f0f0f0; padding: 5px; border-radius: 3px; text-align: left;}
-        .model-config { margin-left: 20px; padding-bottom:10px; margin-bottom:10px; border-bottom: 1px dashed #eee; }
+        .model-config { margin-left: 10px; padding-bottom:10px; margin-bottom:10px; border-bottom: 1px dashed #eee; }
         .model-config:last-child { border-bottom: none; }
-        .model-config label { font-weight: normal; display: inline-block; margin-right: 10px;}
+        .model-config > label { font-weight: normal; display: inline-block; margin-right: 10px;} /* For the main model enable checkbox */
         .model-config input[type="checkbox"] { width: auto; margin-right: 5px;}
-        .model-config .param-input { margin-left: 15px; }
-        .model-config .param-input label { font-size: 0.9em; }
-        .model-config .param-input input { width: auto; padding: 5px; margin-left:5px; }
+
+        .param-group { margin-left: 20px; margin-top: 5px; }
+        .param-group label { font-size: 0.95em; font-weight: normal; display: block; }
+        .param-group input, .param-group select { width: auto; padding: 6px; margin-left:0px; margin-right: 5px; max-width: 200px; }
+        .param-group small { font-size: 0.85em; color: #555; }
 
         .file-status-box { padding: 10px; border: 1px solid #ccc; margin-bottom: 15px; border-radius: 4px; }
         .file-status-box.valid { background-color: #d4edda; border-color: #c3e6cb; }
@@ -62,7 +64,6 @@
         {% else %}
             <p>Current Project: <strong>{{ current_project_name_g }}</strong></p>
 
-            <!-- File Upload Section -->
             <div class="section">
                 <h2>1. Upload Demand Data Excel File</h2>
                 <form method="POST" action="{{ url_for('demand_projection.upload_demand_file') }}" enctype="multipart/form-data">
@@ -74,7 +75,6 @@
                 </form>
             </div>
 
-            <!-- File Status and Configuration Section -->
             {% if excel_file_exists %}
                 <div class="file-status-box {{ 'valid' if input_file_validated else 'invalid' }}">
                     <strong>Excel File Status:</strong> {{ excel_validation_message }}
@@ -91,7 +91,6 @@
                 <h2>2. Configure Forecast Models</h2>
                 <form method="POST" action="{{ url_for('demand_projection.save_demand_configuration_route') }}">
 
-                    <!-- Global Settings -->
                     <h3>Global Settings</h3>
                     <div>
                         <label for="global_target_years">Target Years (comma-separated, e.g., 2025,2030,2035):</label>
@@ -99,55 +98,100 @@
                                value="{{ demand_config.global_settings.target_years | join(',') }}">
                     </div>
                     <div>
-                        <label for="global_forecast_start_year">Forecast Start Year (optional, overrides default):</label>
+                        <label for="global_forecast_start_year">Forecast Start Year (optional):</label>
                         <input type="number" id="global_forecast_start_year" name="global_forecast_start_year"
                                value="{{ demand_config.global_settings.forecast_start_year if demand_config.global_settings.forecast_start_year is not none else '' }}" placeholder="e.g., {{ (demand_config.historical_data_summary.max_year | default(0, true)) + 1 }}">
                     </div>
                     <div>
                         <input type="checkbox" id="global_exclude_covid" name="global_exclude_covid"
                                {% if demand_config.global_settings.exclude_covid_years %}checked{% endif %}>
-                        <label for="global_exclude_covid" style="display:inline; font-weight:normal;">Exclude COVID-19 period years (if defined in model logic)</label>
+                        <label for="global_exclude_covid" style="display:inline; font-weight:normal;">Exclude COVID-19 period years (model specific logic)</label>
                     </div>
                     <hr>
 
-                    <!-- Sector-Specific Models -->
                     <h3>Sector Models</h3>
                     {% for sector in available_sectors %}
                     <div class="sector-config">
                         <h3>Sector: {{ sector }}</h3>
                         {% for model_code, model_details in model_options.items() %}
-                            {% set current_model_config = (demand_config.sector_models.get(sector) or []) | selectattr('model_name', 'equalto', model_code) | first %}
-                            <div class="model-config">
-                                <input type="checkbox" id="{{ sector }}_{{ model_code }}_enabled" name="{{ sector }}|{{ model_code }}|enabled"
-                                       {% if current_model_config and current_model_config.enabled %}checked{% endif %}>
-                                <label for="{{ sector }}_{{ model_code }}_enabled">{{ model_details.label }} ({{ model_code }})</label>
+                            {% set field_name_prefix = sector + '|' + model_code %}
+                            {% set current_model_config_list = (demand_config.sector_models.get(sector) or []) | selectattr('model_name', 'equalto', model_code) %}
+                            {% set current_model_config = current_model_config_list[0] if current_model_config_list else None %}
+                            {% set existing_params = current_model_config.parameters if current_model_config else {} %}
 
-                                {% if model_details.params %}
-                                <div class="param-input">
-                                {% for param_name, param_attrs in model_details.params.items() %}
-                                    <label for="{{ sector }}_{{ model_code }}_{{ param_name }}">{{ param_attrs.label }}:</label>
-                                    {% if param_attrs.type == "number" %}
-                                    <input type="number" id="{{ sector }}_{{ model_code }}_{{ param_name }}"
-                                           name="{{ sector }}|{{ model_code }}|{{ param_name }}"
-                                           value="{{ (current_model_config.parameters.get(param_name) if current_model_config else param_attrs.default) | default(param_attrs.default, true) }}">
-                                    {% elif param_attrs.type == "text" %}
-                                    <input type="text" id="{{ sector }}_{{ model_code }}_{{ param_name }}"
-                                           name="{{ sector }}|{{ model_code }}|{{ param_name }}"
-                                           value="{{ (current_model_config.parameters.get(param_name) if current_model_config else param_attrs.default) | default(param_attrs.default, true) }}">
-                                    {% elif param_attrs.type == "checkbox" %}
-                                     <input type="checkbox" id="{{ sector }}_{{ model_code }}_{{ param_name }}"
-                                           name="{{ sector }}|{{ model_code }}|{{ param_name }}"
-                                           {% if (current_model_config.parameters.get(param_name) if current_model_config else param_attrs.default) %}checked{% endif %}>
+                            <div class="model-config">
+                                <input type="checkbox" id="{{ field_name_prefix }}_enabled" name="{{ field_name_prefix }}|enabled"
+                                       {% if current_model_config and current_model_config.enabled %}checked{% endif %}>
+                                <label for="{{ field_name_prefix }}_enabled">{{ model_details.label }}</label>
+
+                                <div class="param-group">
+                                {% for param_name, param_config in model_details.params.items() %}
+                                    {% if param_config.type == 'select_with_custom' %}
+                                        {% set select_field_name = field_name_prefix + '|' + param_name %}
+                                        {% set custom_field_name = field_name_prefix + '|' + param_config.custom_input_name %}
+                                        {# Determine current WAM window_size to set the select/custom fields correctly #}
+                                        {% set actual_wam_window_size = existing_params.get('window_size', param_config.custom_input_default) | string %}
+                                        {% set is_custom_selected = True %}
+                                        {% for opt in param_config.options %}
+                                            {% if opt.value == actual_wam_window_size and opt.value != 'custom' %}
+                                                {% set is_custom_selected = False %}
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        <label for="{{ select_field_name }}">{{ param_config.label }}:</label>
+                                        <select name="{{ select_field_name }}" id="{{ select_field_name }}" class="wam-window-select">
+                                            {% for option in param_config.options %}
+                                                <option value="{{ option.value }}"
+                                                        {% if (is_custom_selected and option.value == 'custom') or (not is_custom_selected and option.value == actual_wam_window_size) %}selected{% endif %}>
+                                                    {{ option.label }}
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                        <input type="{{ param_config.custom_input_type | default('number') }}"
+                                               name="{{ custom_field_name }}"
+                                               id="{{ custom_field_name }}"
+                                               value="{{ actual_wam_window_size if is_custom_selected else param_config.custom_input_default }}"
+                                               min="{{ param_config.custom_input_min | default(1) }}"
+                                               max="{{ param_config.custom_input_max | default(20) }}"
+                                               class="wam-window-custom-input"
+                                               style="display: {% if is_custom_selected %}inline-block{% else %}none{% endif %}; margin-left: 5px;">
+                                        <small>(Default custom: {{param_config.custom_input_default}})</small><br>
+
+                                    {% elif param_config.type == 'float' or param_config.type == 'number' %}
+                                        {% set input_val = existing_params.get(param_name, param_config.default) %}
+                                        <label for="{{ field_name_prefix }}_{{ param_name }}">{{ param_config.label }}:</label>
+                                        <input type="{{ param_config.type }}" id="{{ field_name_prefix }}_{{ param_name }}"
+                                               name="{{ field_name_prefix }}|{{ param_name }}"
+                                               value="{{ input_val if input_val is not none else param_config.default }}"
+                                               step="{{ param_config.step | default('any' if param_config.type == 'float' else 1) }}"
+                                               min="{{ param_config.min | default('') }}" max="{{ param_config.max | default('') }}">
+                                        <small>(Default: {{param_config.default}})</small><br>
+                                    {% elif param_config.type == 'text' %}
+                                         <label for="{{ field_name_prefix }}_{{ param_name }}">{{ param_config.label }}:</label>
+                                         <input type="text" id="{{ field_name_prefix }}_{{ param_name }}"
+                                               name="{{ field_name_prefix }}|{{ param_name }}"
+                                               value="{{ existing_params.get(param_name, param_config.default) }}">
+                                        <small>(Default: {{param_config.default}})</small><br>
                                     {% endif %}
-                                    <small> (Default: {{param_attrs.default}})</small><br>
                                 {% endfor %}
                                 </div>
-                                {% endif %}
                             </div>
                         {% endfor %}
                     </div>
                     {% endfor %}
                     <button type="submit" class="button button-save-config" style="margin-top:15px;">Save Demand Configuration</button>
+                </form>
+            </div>
+
+            <div class="section">
+                <h2>3. Run Forecast</h2>
+                <form method="POST" action="{{ url_for('demand_projection.run_forecast_route') }}">
+                    <div>
+                        <label for="scenario_name">Scenario Name:</label>
+                        <input type="text" id="scenario_name" name="scenario_name" value="Forecast_{{ datetime.utcnow().strftime('%Y%m%d_%H%M%S') }}" required>
+                        <small>A unique name for this forecast run.</small>
+                    </div>
+                    <button type="submit" class="button" style="margin-top:15px; background-color: #ffc107; color: #212529;">Run Forecast</button>
                 </form>
             </div>
             {% elif excel_file_exists and not input_file_validated %}
@@ -156,24 +200,6 @@
                 <p class="info">Upload a valid demand data Excel file to enable model configuration.</p>
             {% endif %}
 
-            <!-- Run Forecast Section -->
-            {% if input_file_validated %}
-            <div class="section">
-                <h2>3. Run Forecast</h2>
-                <form method="POST" action="{{ url_for('demand_projection.run_forecast_route') }}">
-                    <div>
-                        <label for="scenario_name">Scenario Name:</label>
-                        <input type="text" id="scenario_name" name="scenario_name" value="Forecast_{{ '%Y%m%d_%H%M%S'.strftime(datetime.utcnow()) }}" required>
-                        <small>A unique name for this forecast run. Defaults to current timestamp if left as is, but a descriptive name is better.</small>
-                    </div>
-                    {# Target years are now read from demand_config.json by the route, so no need for form inputs here unless for overriding #}
-                    {# Example: <p>Forecast will use target years: {{ demand_config.global_settings.target_years | join(', ') if demand_config and demand_config.global_settings and demand_config.global_settings.target_years else 'Not configured' }}</p> #}
-                    <button type="submit" class="button" style="margin-top:15px; background-color: #ffc107; color: #212529;">Run Forecast</button>
-                </form>
-            </div>
-            {% endif %}
-
-
         {% endif %} {# End of project loaded check #}
         <hr style="margin-top:30px;">
         <div style="text-align: center; margin-bottom: 20px;">
@@ -181,32 +207,29 @@
         </div>
         <a href="{{ url_for('main.home') }}" class="nav-link" style="display: block; text-align: center;">Back to Project Home</a>
     </div>
+
+<script>
+    // JavaScript for toggling custom input visibility for select_with_custom type
+    document.addEventListener('DOMContentLoaded', function() {
+        var selects = document.querySelectorAll('select.wam-window-select'); // More specific selector
+        selects.forEach(function(selectEl) {
+            var customInputId = selectEl.id.replace('_window_size_option', '_window_size_custom'); // Derive custom input ID
+            var customInputEl = document.getElementById(customInputId);
+
+            if (customInputEl) {
+                // Initial state check
+                customInputEl.style.display = (selectEl.value === 'custom') ? 'inline-block' : 'none';
+
+                selectEl.addEventListener('change', function() {
+                    customInputEl.style.display = (this.value === 'custom') ? 'inline-block' : 'none';
+                    if (this.value !== 'custom') {
+                        // Optional: Reset custom input value or set to a default if select changes away from custom
+                        // customInputEl.value = customInputEl.defaultValue; // Or specific default from data-attribute
+                    }
+                });
+            }
+        });
+    });
+</script>
 </body>
 </html>
-<!-- Jinja filter for timestamp - needs to be registered in Flask app if used like this:
-    @app.template_filter('strftime')
-    def _jinja2_filter_datetime(date, fmt=None):
-        # If date is a float or int, assume it's a Unix timestamp
-        if isinstance(date, (int, float)):
-            date = datetime.fromtimestamp(date)
-        if fmt:
-            return date.strftime(fmt)
-        else:
-            return date.strftime('%Y-%m-%d %H:%M:%S')
-    For simplicity, removing the strftime filter from the template for now,
-    and relying on the user to type or the route to default the scenario name.
-    A simpler default in template: value="default_scenario"
--->
-
-<!-- Corrected Scenario Name default value -->
-<!-- <input type="text" id="scenario_name" name="scenario_name" value="default_scenario" required> -->
-<!-- The route will handle default if empty, so 'required' is good. -->
-<!-- Or, if you want a dynamic default like a timestamp, it's better to set it in the route if the field is submitted empty. -->
-<!-- For now, the route handles default if empty. The template has a dynamic value using Jinja. -->
-<!-- To use datetime.utcnow() in template, it must be passed from the route. -->
-<!-- Simpler: value="MyForecastScenario" as placeholder -->
-<!-- Let's use what I had: value="Forecast_{{ '%Y%m%d_%H%M%S'.strftime(datetime.utcnow()) }}"
-     but this requires `datetime` to be available in template context.
-     It's better to pass `now_timestamp` from the route or handle default in route.
-     I will adjust the route to provide `now_timestamp` for the default scenario name.
--->
