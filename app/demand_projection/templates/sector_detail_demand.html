@@ -27,6 +27,39 @@
 
         .project-info { margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; text-align: center; }
         .chart-container { width: 95%; max-width: 900px; margin: 20px auto; padding:10px; border: 1px solid #ddd; border-radius:5px; background-color:#fdfdfd;}
+
+        /* Tab Styles */
+        .view-tabs { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; text-align:center;}
+        .view-tabs a.tab-link {
+            padding: 10px 15px;
+            text-decoration: none;
+            border: 1px solid transparent;
+            border-bottom: none;
+            margin-right: 5px;
+            color: #007bff;
+            border-radius: 4px 4px 0 0;
+        }
+        .view-tabs a.tab-link.active {
+            background-color: #fff;
+            border-color: #ccc #ccc #fff #ccc; /* Creates the tab effect */
+            font-weight: bold;
+            color: #0056b3;
+        }
+        .view-tabs a.tab-link:hover { background-color: #e9ecef; border-color: #ddd #ddd #fff #ddd; }
+
+        /* T&D Loss Form Styles */
+        .td-loss-entry { display: flex; align-items: center; margin-bottom: 8px; padding: 8px; border: 1px dashed #eee; background-color: #fff; border-radius:4px;}
+        .td-loss-entry input[type="number"] { margin-right: 10px; padding: 6px; width:100px; }
+        .td-loss-entry button.removeTdLossRowBtn {
+            padding: 4px 8px; background-color: #dc3545; color:white; border:none; border-radius:3px; cursor:pointer; font-size:0.8em;
+        }
+        .td-loss-entry button.removeTdLossRowBtn:hover { background-color: #c82333; }
+        #addTdLossRowBtn, #saveTdLossConfigBtn { padding: 8px 12px; margin-top:10px; background-color: #28a745; color:white; border:none; border-radius:4px; cursor:pointer;}
+        #addTdLossRowBtn:hover, #saveTdLossConfigBtn:hover { background-color: #218838; }
+        #saveTdLossConfigBtn { background-color: #007bff; }
+        #saveTdLossConfigBtn:hover { background-color: #0056b3; }
+
+
         /* Sidebar Styles */
         .sidebar {
             height: 100%; width: 300px; /* Adjusted width */
@@ -118,8 +151,8 @@
         </form>
     </div>
 
-    <div class="container main-content-area"> {# Added main-content-area wrapper #}
-        <h1>Sector Demand Details</h1>
+    <div class="container main-content-area">
+        <h1>Scenario Details: {{ display_scenario_name }}</h1>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -138,26 +171,36 @@
                 Project: <strong>{{ current_project_name_g }}</strong> | Scenario: <strong>{{ display_scenario_name }}</strong>
             </div>
 
-            <div class="sector-nav">
-                <strong>Select Sector:</strong>
-                {% for sector_item in available_sectors %}
-                    <a href="{{ url_for('demand_projection.view_sector_detail_route', scenario_filename=scenario_filename, sector_name=sector_item) }}"
-                       class="{{ 'active' if sector_item == selected_sector else '' }}">
-                        {{ sector_item }}
-                    </a>
-                {% endfor %}
+            <div class="view-tabs">
+                <a href="{{ url_for('demand_projection.view_sector_detail_route', scenario_filename=scenario_filename, view='sector_forecasts', sector_name=(selected_sector if selected_sector else (available_sectors[0] if available_sectors else ''))) }}"
+                   class="tab-link {% if active_view == 'sector_forecasts' %}active{% endif %}">Sector Forecasts</a>
+                <a href="{{ url_for('demand_projection.view_sector_detail_route', scenario_filename=scenario_filename, view='td_losses') }}"
+                   class="tab-link {% if active_view == 'td_losses' %}active{% endif %}">T&D Loss Configuration</a>
+                <a href="{{ url_for('demand_projection.view_sector_detail_route', scenario_filename=scenario_filename, view='final_consolidated') }}"
+                   class="tab-link {% if active_view == 'final_consolidated' %}active{% endif %}">Final Consolidated View</a>
             </div>
-            <hr>
 
-            {% if selected_sector %}
-                <h2>Details for Sector: {{ selected_sector }}</h2>
-
-                <div class="chart-container">
-                    <canvas id="forecastChart"></canvas>
+            {% if active_view == 'sector_forecasts' %}
+                <div class="sector-nav" style="margin-top:15px; margin-bottom:15px;">
+                    <strong>Select Sector to View Details:</strong>
+                    {% for sector_item in available_sectors %}
+                        <a href="{{ url_for('demand_projection.view_sector_detail_route', scenario_filename=scenario_filename, view='sector_forecasts', sector_name=sector_item) }}"
+                           class="{{ 'active' if sector_item == selected_sector else '' }}">
+                            {{ sector_item }}
+                        </a>
+                    {% endfor %}
                 </div>
+                <hr>
 
-                <h3>Data Table</h3>
-                {% if not sector_data_df.empty %}
+                {% if selected_sector %}
+                    <h2>Details for Sector: {{ selected_sector }}</h2>
+
+                    <div class="chart-container">
+                        <canvas id="forecastChart"></canvas>
+                    </div>
+
+                    <h3>Data Table</h3>
+                    {% if not sector_data_df.empty %}
                 <table>
                     <thead>
                         <tr>
@@ -186,19 +229,120 @@
                 <p>No data available for this sector in the selected scenario.</p>
                 {% endif %}
 
-                <div class="primary-model-section-placeholder"> {# Changed class to avoid conflict if any #}
-                    <h3>Primary Model Selection for {{ selected_sector }}</h3>
-                <p>Current Primary Model for {{ selected_sector }}: <strong id="currentPrimaryModelDisplay">{{ primary_model_selected | default('None (Default Logic)') }}</strong></p>
-                <p>Available models in this data for {{ selected_sector }}: {{ all_models_in_data | join(', ') if all_models_in_data else 'None' }}</p>
-                <p><em>Use the "Configure Primary Models" button (top right) to open the selection panel and save your choices.</em></p>
+                    <div class="primary-model-section-placeholder">
+                        <h3>Primary Model Information for {{ selected_sector }}</h3>
+                        <p>Currently Selected Primary Model: <strong id="currentPrimaryModelDisplay">{{ primary_model_selected | default('None (Default Logic will apply based on first enabled model)') }}</strong></p>
+                        <p>Available models in this data for {{ selected_sector }}: {{ all_models_in_data | join(', ') if all_models_in_data else 'None' }}</p>
+                        <p><em>Use the "Configure Primary Models" button (top right of page) to change selections for any sector.</em></p>
+                    </div>
+
+                {% else %}
+                    <p class="info">Please select a sector to view details, or ensure data exists for this sector.</p>
+                {% endif %}
+
+            {% elif active_view == 'td_losses' %}
+                <div id="tdLossConfigSection">
+                    <h3>T&D Loss Configuration for Scenario: {{ display_scenario_name }}</h3>
+                    <form id="tdLossForm">
+                        <p>Define year-wise T&D loss percentages. These will be applied to the total aggregated demand.</p>
+                        <div id="tdLossEntriesContainer">
+                            {% set existing_td_losses = current_display_settings.get('td_losses', []) %}
+                            {% if existing_td_losses %}
+                                {% for loss_entry in existing_td_losses %}
+                                <div class="td-loss-entry">
+                                    Year: <input type="number" name="td_year[]" value="{{ loss_entry.year }}" min="1900" max="2100" placeholder="Year" required>
+                                    Loss %: <input type="number" name="td_loss_pct[]" value="{{ loss_entry.loss_pct }}" min="0" max="100" step="0.01" placeholder="Loss %" required>
+                                    <button type="button" class="removeTdLossRowBtn">Remove</button>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="td-loss-entry">
+                                    Year: <input type="number" name="td_year[]" min="1900" max="2100" placeholder="Year" required>
+                                    Loss %: <input type="number" name="td_loss_pct[]" min="0" max="100" step="0.01" placeholder="Loss %" required>
+                                    <button type="button" class="removeTdLossRowBtn">Remove</button>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <button type="button" id="addTdLossRowBtn">Add Year & Loss Entry</button>
+                        <hr>
+                        <button type="button" id="saveTdLossConfigBtn">Save T&D Configuration</button>
+                    </form>
                 </div>
 
-            {% else %}
-                <p class="info">Please select a sector to view details.</p>
-            {% endif %}
+            {% elif active_view == 'final_consolidated' %}
+                <div id="finalConsolidatedViewSection">
+                    <h3>Final Consolidated Demand</h3>
+                    <p>These results reflect your primary model selections for each sector and the applied T&D losses for the scenario: <strong>{{ display_scenario_name }}</strong>.</p>
 
-            <div class="nav-links">
-                <a href="{{ url_for('demand_projection.results_page_route', scenario_id=scenario_filename) }}">Back to Scenario Results List</a>
+                    <h4>Detailed Breakdown by Sector (Net Demand)</h4>
+                    {% if final_consolidated_table_data %}
+                        <table class="results-table">
+                            <thead>
+                                <tr>
+                                    <th>Year</th>
+                                    <th>Sector</th>
+                                    <th>Primary Model</th>
+                                    <th class="number">Gross Demand</th>
+                                    <th class="number">T&D Loss (%)</th>
+                                    <th class="number">T&D Loss Amount</th>
+                                    <th class="number">Net Demand</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in final_consolidated_table_data %}
+                                <tr>
+                                    <td>{{ row.Year }}</td>
+                                    <td>{{ row.Sector }}</td>
+                                    <td>{{ row.Primary_Model }}</td>
+                                    <td class="number">{{ "%.2f"|format(row.Gross_Demand) }}</td>
+                                    <td class="number">{{ "%.2f"|format(row.T_D_Loss_Pct) }}</td> {# Corrected key here #}
+                                    <td class="number">{{ "%.2f"|format(row.T_D_Loss_Amount) }}</td> {# Corrected key here #}
+                                    <td class="number">{{ "%.2f"|format(row.Net_Demand) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p class="info">No final consolidated data available. This could be due to missing primary model selections for all sectors, or no T&D loss configuration if it results in zero net demand for all entries.</p>
+                    {% endif %}
+
+                    <h4 style="margin-top: 30px;">Total Net Demand by Year</h4>
+                    {% if total_net_demand_table_data %}
+                        <table class="results-table" style="max-width: 400px; margin-left:auto; margin-right:auto;">
+                             <thead>
+                                <tr>
+                                    <th>Year</th>
+                                    <th class="number">Total Net Demand</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in total_net_demand_table_data %}
+                                <tr>
+                                    <td>{{ row.Year }}</td>
+                                    <td class="number">{{ "%.2f"|format(row.Total_Net_Demand) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p class="info">No total net demand data to display.</p>
+                    {% endif %}
+
+                    {# Download Button #}
+                    <div style="text-align:center; margin-top:20px;">
+                        {% if final_consolidated_table_data %} {# Only show button if there's data to download #}
+                         <a href="{{ url_for('demand_projection.download_final_consolidated_csv_route', scenario_filename=scenario_filename) }}" class="button" style="background-color:#007bff; text-decoration:none;">
+                            Download Final Consolidated CSV
+                         </a>
+                        {% else %}
+                         <button type="button" class="button" style="background-color:#6c757d; cursor:not-allowed;" disabled>Download Final Consolidated CSV (No data)</button>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %} {# End active_view check #}
+
+            <div class="nav-links" style="border-top: 1px solid #ccc; padding-top:15px; margin-top:25px;">
+                <a href="{{ url_for('demand_projection.results_page_route', scenario_id=scenario_filename) }}">Back to Scenario List & Download Results</a>
                 <a href="{{ url_for('main.home') }}">Back to Project Home</a>
             </div>
 
@@ -206,9 +350,10 @@
     </div>
 
 <script>
-    // Chart.js plotting logic
-    const chartCanvas = document.getElementById('forecastChart'); // Renamed for clarity
-    const sectorDataJsonForChart = JSON.parse({{ sector_data_json | safe }}); // Renamed for clarity
+    // Chart.js plotting logic (only if on sector_forecasts view)
+    if ("{{ active_view }}" === "sector_forecasts") {
+        const chartCanvas = document.getElementById('forecastChart');
+        const sectorDataJsonForChart = JSON.parse({{ sector_data_json | default('[]') | safe }});
 
     let forecastChartInstance = null; // To store the chart instance for potential updates/destruction
 
@@ -295,7 +440,9 @@
     }
 
     // Initial render
-    renderForecastChart(chartCanvas, sectorDataJsonForChart, "{{ selected_sector | e }}");
+    if ("{{ active_view }}" === "sector_forecasts") { // Ensure chart rendering is also conditional
+        renderForecastChart(chartCanvas, sectorDataJsonForChart, "{{ selected_sector | e if selected_sector else '' }}");
+    }
 
 
     // Sidebar JavaScript
@@ -379,6 +526,85 @@
                 alert('An error occurred while saving selections: ' + error.message);
             });
         });
+    }
+
+    // T&D Loss Row Management (only if on td_losses view)
+    if ("{{ active_view }}" === "td_losses") {
+        const addTdLossRowBtn = document.getElementById('addTdLossRowBtn');
+        if (addTdLossRowBtn) {
+            addTdLossRowBtn.addEventListener('click', function() {
+                const container = document.getElementById('tdLossEntriesContainer');
+                const newEntry = document.createElement('div');
+                newEntry.classList.add('td-loss-entry');
+                newEntry.innerHTML = `
+                    Year: <input type="number" name="td_year[]" min="1900" max="2100" placeholder="Year" required>
+                    Loss %: <input type="number" name="td_loss_pct[]" min="0" max="100" step="0.01" placeholder="Loss %" required>
+                    <button type="button" class="removeTdLossRowBtn">Remove</button>
+                `;
+                container.appendChild(newEntry);
+                attachRemoveListenersToNewRow(newEntry);
+            });
+        }
+
+        function removeRowHandler(event) {
+            event.target.closest('.td-loss-entry').remove();
+        }
+
+        function attachRemoveListenersToNewRow(rowElement) {
+            const button = rowElement.querySelector('.removeTdLossRowBtn');
+            if (button) {
+                button.addEventListener('click', removeRowHandler);
+            }
+        }
+
+        document.querySelectorAll('.removeTdLossRowBtn').forEach(button => {
+            button.addEventListener('click', removeRowHandler);
+        });
+
+        const saveTdConfigBtn = document.getElementById('saveTdLossConfigBtn');
+        if (saveTdConfigBtn) {
+            saveTdConfigBtn.addEventListener('click', function() {
+                const entriesContainer = document.getElementById('tdLossEntriesContainer');
+                const scenarioFilenameForTd = '{{ scenario_filename | e }}';
+                const tdLossData = [];
+
+                entriesContainer.querySelectorAll('.td-loss-entry').forEach(function(entryDiv) {
+                    const yearInput = entryDiv.querySelector('input[name="td_year[]"]');
+                    const lossPctInput = entryDiv.querySelector('input[name="td_loss_pct[]"]');
+                    if (yearInput && lossPctInput && yearInput.value.trim() !== '' && lossPctInput.value.trim() !== '') {
+                        const year = parseInt(yearInput.value, 10);
+                        const loss_pct = parseFloat(lossPctInput.value);
+
+                        if (!isNaN(year) && !isNaN(loss_pct) && year >= 1900 && year <= 2100 && loss_pct >= 0 && loss_pct <= 100) {
+                            tdLossData.push({ year: year, loss_pct: loss_pct });
+                        } else {
+                            console.warn("Skipping invalid T&D loss entry: ", {year: yearInput.value, loss: lossPctInput.value});
+                        }
+                    }
+                });
+
+                tdLossData.sort((a, b) => a.year - b.year);
+
+                const saveTdUrl = "{{ url_for('demand_projection.save_td_losses_route', scenario_filename='PLACEHOLDER_SCENARIO_FILENAME') }}".replace('PLACEHOLDER_SCENARIO_FILENAME', encodeURIComponent(scenarioFilenameForTd));
+
+                fetch(saveTdUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // 'X-CSRFToken': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify(tdLossData)
+                })
+                .then(response => response.json().then(data => ({ok: response.ok, data: data})))
+                .then(result => {
+                    alert(result.data.message);
+                })
+                .catch(error => {
+                    console.error('Error saving T&D loss configuration:', error);
+                    alert('An error occurred while saving T&D configuration: ' + error.message);
+                });
+            });
+        }
     }
 
 </script>

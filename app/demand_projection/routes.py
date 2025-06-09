@@ -5,11 +5,13 @@ from app.demand_projection import bp
 from app.utils.file_manager import ProjectManager, validate_file_upload
 from .file_handlers import load_demand_config, save_demand_config, validate_and_parse_demand_input_excel, save_demand_forecast_results, MODEL_OPTIONS as FH_MODEL_OPTIONS, DEFAULT_DEMAND_CONFIG
 from .models import forecast_slr, forecast_wam, forecast_mlr
+from .utils import get_interpolated_td_loss
 import os
 import pandas as pd
+import numpy as np # For np.nan
 from datetime import datetime
-import json # For loading display_settings.json
-import re # For scenario name extraction
+import json
+import re
 
 # Make model options available to routes in this blueprint
 AVAILABLE_MODELS_CONFIG = FH_MODEL_OPTIONS
@@ -547,7 +549,11 @@ def view_sector_detail_route(scenario_filename):
                            all_models_in_data=all_models_in_sector_data, # For the currently displayed sector (title, etc.)
                            all_models_in_data_for_all_sectors=all_models_in_data_for_all_sectors, # For the sidebar
                            current_display_settings=current_display_settings, # Pass full settings for robust pre-selection
-                           project_name=current_app.config.get('CURRENT_PROJECT_NAME'))
+                           project_name=current_app.config.get('CURRENT_PROJECT_NAME'),
+                           active_view=request.args.get('view', 'sector_forecasts'), # Pass active_view
+                           # For final_consolidated view
+                           final_consolidated_table_data=template_context.get('final_consolidated_table_data', []),
+                           total_net_demand_table_data=template_context.get('total_net_demand_table_data', []))
 
 
 @bp.route('/save_primary_models/<path:scenario_filename>', methods=['POST'])
@@ -648,6 +654,331 @@ def save_primary_models_route(scenario_filename):
                             'consolidated_file': None}), 200
     else:
         return jsonify({'message': 'Error saving primary model selections to file.'}), 500
+
+
+@bp.route('/save_td_losses/<path:scenario_filename>', methods=['POST'])
+def save_td_losses_route(scenario_filename):
+    project_path_abs = current_app.config.get('CURRENT_PROJECT_PATH_ABS')
+    if not project_path_abs:
+        return jsonify({'message': 'No project loaded. Cannot save T&D losses.'}), 400
+
+    # Validate scenario_filename (similar to save_primary_models_route)
+    results_dir_val = os.path.join(project_path_abs, 'results', 'demand_projection')
+    valid_files = []
+    if os.path.exists(results_dir_val):
+        for f_name in os.listdir(results_dir_val):
+            if f_name.startswith('demand_forecast_') and f_name.endswith('.csv'):
+                valid_files.append(f_name)
+
+    safe_scenario_filename_from_path = secure_filename(scenario_filename)
+    if safe_scenario_filename_from_path not in valid_files:
+        return jsonify({'message': 'Invalid scenario file specified for T&D losses.'}), 400
+
+    scenario_base_name = safe_scenario_filename_from_path.replace('demand_forecast_', '').replace('.csv', '')
+
+    payload = request.get_json() # Expecting a list of dicts: [{'year': YYYY, 'loss_pct': P.P}, ...]
+
+    valid_td_entries = []
+    if isinstance(payload, list):
+        for entry in payload:
+            if isinstance(entry, dict) and 'year' in entry and 'loss_pct' in entry:
+                try:
+                    year = int(entry['year'])
+                    loss_pct = float(entry['loss_pct'])
+                    # Validate ranges, e.g., year reasonable, loss_pct between 0-100
+                    if 1900 <= year <= 2100 and 0.0 <= loss_pct <= 100.0:
+                        valid_td_entries.append({'year': year, 'loss_pct': loss_pct})
+                    else:
+                        # Log or signal back that some data was invalid and ignored
+                        print(f"Warning: Invalid T&D entry ignored: Year {year}, Loss {loss_pct}%")
+                except (ValueError, TypeError):
+                    print(f"Warning: Invalid type in T&D entry ignored: {entry}") # Log or signal
+            else:
+                print(f"Warning: Malformed T&D entry object ignored: {entry}")
+    else:
+        return jsonify({'message': 'Invalid data format. Expected a list of T&D entries.'}), 400
+
+    # Sort by year before saving
+    valid_td_entries.sort(key=lambda x: x['year'])
+
+    settings_to_save = {'td_losses': valid_td_entries}
+
+    if save_display_settings(project_path_abs, scenario_base_name, settings_to_save):
+        # After saving T&D losses, regenerate the consolidated file as T&D might affect net demand later
+        # However, current consolidation only uses primary models and doesn't apply T&D losses.
+        # So, re-triggering consolidation here might be premature unless it's extended.
+        # For now, just confirm save.
+        # TODO: Consider if consolidated results should be re-generated or if a separate "net demand" file is made.
+        return jsonify({'message': 'T&D loss configuration saved successfully!'}), 200
+    else:
+        return jsonify({'message': 'Error saving T&D loss configuration to file.'}), 500
+
+
+@bp.route('/download_final_consolidated_csv/<path:scenario_filename>')
+def download_final_consolidated_csv_route(scenario_filename):
+    project_path_abs = current_app.config.get('CURRENT_PROJECT_PATH_ABS')
+    if not project_path_abs:
+        flash('No project loaded. Cannot download file.', 'error')
+        return redirect(url_for('main.home'))
+
+    results_dir = os.path.join(project_path_abs, 'results', 'demand_projection')
+    safe_scenario_filename = secure_filename(scenario_filename)
+
+    # Validate scenario_filename against known files
+    valid_detailed_files = []
+    if os.path.exists(results_dir):
+        for f_name in os.listdir(results_dir):
+            if f_name.startswith('demand_forecast_') and f_name.endswith('.csv'):
+                valid_detailed_files.append(f_name)
+    if safe_scenario_filename not in valid_detailed_files:
+        flash(f"Invalid or non-existent scenario file specified for download: {safe_scenario_filename}", "danger")
+        return redirect(url_for('.results_page_route')) # Or appropriate error page
+
+    main_forecast_filepath = os.path.join(results_dir, safe_scenario_filename)
+    try:
+        main_df = pd.read_csv(main_forecast_filepath)
+        if main_df.empty:
+            flash(f"Main forecast file '{safe_scenario_filename}' is empty. Cannot generate consolidated CSV.", "warning")
+            return redirect(url_for('.view_sector_detail_route', scenario_filename=safe_scenario_filename, view='final_consolidated'))
+    except Exception as e:
+        flash(f"Error reading main forecast file '{safe_scenario_filename}': {e}", "danger")
+        return redirect(url_for('.results_page_route'))
+
+    scenario_base_name = safe_scenario_filename.replace('demand_forecast_', '').replace('.csv', '')
+    current_display_settings = load_display_settings(project_path_abs, scenario_base_name)
+    primary_models_config = current_display_settings.get('primary_models', {})
+    td_loss_config = current_display_settings.get('td_losses', [])
+
+    final_consolidated_data_rows = []
+    available_sectors_sorted = sorted(main_df['Sector'].unique().tolist())
+    unique_years = sorted(main_df['Year'].unique())
+
+    if not primary_models_config: # Check if any primary models were selected
+        flash(f"No primary models selected for scenario '{scenario_base_name}'. Cannot generate user-driven consolidated CSV.", "warning")
+        return redirect(url_for('.view_sector_detail_route', scenario_filename=safe_scenario_filename, view='final_consolidated'))
+
+
+    for sector_name in available_sectors_sorted:
+        chosen_model = primary_models_config.get(sector_name)
+        if chosen_model and chosen_model != "": # Specific model selected
+            sector_df = main_df[(main_df['Sector'] == sector_name) & (main_df['Model'] == chosen_model)]
+
+            for year in unique_years: # Ensure all years are present for each selected sector
+                gross_demand_row = sector_df[sector_df['Year'] == year]
+                gross_value, lower_bound, upper_bound, comment = np.nan, np.nan, np.nan, ''
+
+                if not gross_demand_row.empty:
+                    gross_value = gross_demand_row['Value'].iloc[0]
+                    lower_bound = gross_demand_row['Lower_Bound'].iloc[0] if 'Lower_Bound' in gross_demand_row.columns else np.nan
+                    upper_bound = gross_demand_row['Upper_Bound'].iloc[0] if 'Upper_Bound' in gross_demand_row.columns else np.nan
+                    comment = gross_demand_row['Comment'].iloc[0] if 'Comment' in gross_demand_row.columns else ''
+                else: # Year not present for this sector's chosen model
+                    comment = 'Year not forecasted by chosen primary model'
+
+                td_loss_pct_for_year = get_interpolated_td_loss(year, td_loss_config)
+                td_loss_amount = gross_value * td_loss_pct_for_year if pd.notna(gross_value) else np.nan
+                net_demand = gross_value * (1 - td_loss_pct_for_year) if pd.notna(gross_value) else np.nan
+
+                final_consolidated_data_rows.append({
+                    'Year': year, 'Sector': sector_name, 'Primary_Model': chosen_model,
+                    'Gross_Demand': gross_value, 'Gross_Lower_Bound': lower_bound, 'Gross_Upper_Bound': upper_bound,
+                    'T&D_Loss_Pct': td_loss_pct_for_year * 100, 'T&D_Loss_Amount': td_loss_amount,
+                    'Net_Demand': net_demand, 'Model_Comment': comment
+                })
+        # else: sector not in primary_models_config or choice was "Auto", so it's excluded from this CSV
+
+    if not final_consolidated_data_rows:
+        flash("No data to generate for the final consolidated CSV based on current primary model selections.", 'warning')
+        return redirect(url_for('.view_sector_detail_route', scenario_filename=safe_scenario_filename, view='final_consolidated'))
+
+    final_df_to_save = pd.DataFrame(final_consolidated_data_rows)
+    column_order = ['Year', 'Sector', 'Primary_Model', 'Gross_Demand', 'Gross_Lower_Bound', 'Gross_Upper_Bound',
+                    'T&D_Loss_Pct', 'T&D_Loss_Amount', 'Net_Demand', 'Model_Comment']
+    final_df_to_save = final_df_to_save.reindex(columns=column_order) # Ensure correct column order
+
+    # Determine Output Filename
+    scenario_name_from_form = scenario_base_name # Fallback
+    match_name = re.search(r"(.+)_(\d{8}_\d{6})", scenario_base_name)
+    if match_name:
+        scenario_name_from_form = match_name.group(1)
+
+    output_filename = f"consolidated_demand_forecast_{scenario_name_from_form}.csv"
+    output_filepath = os.path.join(results_dir, output_filename)
+
+    try:
+        final_df_to_save.to_csv(output_filepath, index=False, float_format='%.2f')
+    except Exception as e:
+        flash(f"Error saving final consolidated CSV: {e}", "danger")
+        return redirect(url_for('.view_sector_detail_route', scenario_filename=safe_scenario_filename, view='final_consolidated'))
+
+    # Update Project Metadata
+    try:
+        pm = ProjectManager(current_app.config['PROJECT_ROOT_ABS'])
+        project_folder = os.path.basename(project_path_abs)
+        metadata = pm.get_project_metadata(project_folder)
+        if metadata and metadata.get('last_forecast_run', {}).get('file') == safe_scenario_filename:
+            # Update the consolidated_file reference in metadata only if this scenario was the last one run
+            # This ensures the results page (which uses metadata) points to this user-driven consolidated file
+            updated_last_run = metadata['last_forecast_run'].copy()
+            updated_last_run['consolidated_file'] = output_filename
+            updated_last_run['final_consolidation_at'] = datetime.now().isoformat() + 'Z'
+            pm.update_project_metadata(project_folder, {'last_forecast_run': updated_last_run})
+        # else: If not the absolute last run, display_settings.json is still specific to this scenario_base_name,
+        # and the consolidated file is now also specific to scenario_name_from_form.
+        # The results page scan will pick up this new/updated consolidated file by its name.
+    except Exception as e_meta:
+        flash(f"Metadata update failed after creating final consolidated CSV: {e_meta}", "warning")
+        # Proceed to send file even if metadata fails
+
+    return send_from_directory(results_dir, output_filename, as_attachment=True)
+
+
+# Helper function to get final net demand for a scenario
+def _get_final_net_demand_for_scenario(project_path_abs, scenario_filename_full):
+    """
+    Calculates final net demand (per sector and total) for a given scenario file.
+    Returns a tuple: (detailed_df, total_df, error_message_str_or_none).
+    detailed_df has ['Year', 'Sector', 'Net_Demand'].
+    total_df has ['Year', 'Total_Net_Demand'].
+    """
+    results_dir = os.path.join(project_path_abs, 'results', 'demand_projection')
+    safe_scenario_filename = secure_filename(scenario_filename_full) # Already validated by caller usually
+
+    main_forecast_filepath = os.path.join(results_dir, safe_scenario_filename)
+    main_df = None
+    try:
+        main_df = pd.read_csv(main_forecast_filepath)
+        if main_df.empty:
+            return None, None, f"Main forecast file '{safe_scenario_filename}' is empty."
+    except FileNotFoundError:
+        return None, None, f"Main forecast file '{safe_scenario_filename}' not found."
+    except Exception as e:
+        return None, None, f"Error reading main forecast file '{safe_scenario_filename}': {e}"
+
+    scenario_base_name = safe_scenario_filename.replace('demand_forecast_', '').replace('.csv', '')
+    display_settings = load_display_settings(project_path_abs, scenario_base_name) # From file_handlers
+    primary_models_config = display_settings.get('primary_models', {})
+    td_loss_config = display_settings.get('td_losses', [])
+
+    if not primary_models_config:
+        return None, None, f"No primary models selected for scenario '{scenario_base_name}'. Cannot calculate final net demand."
+
+    final_data_rows = []
+    available_sectors = sorted(main_df['Sector'].unique().tolist())
+    unique_years = sorted(main_df['Year'].unique())
+
+    for sector_name in available_sectors:
+        chosen_model = primary_models_config.get(sector_name)
+        if chosen_model and chosen_model != "":
+            sector_df = main_df[(main_df['Sector'] == sector_name) & (main_df['Model'] == chosen_model)]
+            for year in unique_years:
+                gross_demand_row = sector_df[sector_df['Year'] == year]
+                gross_value = np.nan
+                if not gross_demand_row.empty:
+                    gross_value = gross_demand_row['Value'].iloc[0]
+
+                td_loss_pct = get_interpolated_td_loss(year, td_loss_config) # From utils
+                net_demand = gross_value * (1 - td_loss_pct) if pd.notna(gross_value) else np.nan
+
+                if pd.notna(net_demand): # Only add rows where net_demand could be calculated
+                    final_data_rows.append({'Year': year, 'Sector': sector_name, 'Net_Demand': net_demand})
+
+    if not final_data_rows:
+        return None, None, "No final net demand data generated based on primary model selections."
+
+    detailed_final_df = pd.DataFrame(final_data_rows)
+    total_final_df = None
+    if not detailed_final_df.empty:
+        total_final_df = detailed_final_df.groupby('Year')['Net_Demand'].sum().reset_index()
+        total_final_df.rename(columns={'Net_Demand': 'Total_Net_Demand'}, inplace=True)
+
+    return detailed_final_df, total_final_df, None
+
+
+@bp.route('/compare_scenarios')
+def compare_scenarios_route():
+    project_path_abs = current_app.config.get('CURRENT_PROJECT_PATH_ABS')
+    template_context = {
+        "available_scenarios": [], "scenario_a_id": None, "scenario_b_id": None,
+        "comparison_table": [], "plot_data_json": "{}", "error_message": None,
+        "project_name": current_app.config.get('CURRENT_PROJECT_NAME'),
+        "scenario_a_display_name": "N/A", "scenario_b_display_name": "N/A"
+    }
+
+    if not project_path_abs:
+        flash('No project loaded. Please load or create one first.', 'warning')
+        return render_template('compare_scenarios.html', **template_context)
+
+    results_dir = os.path.join(project_path_abs, 'results', 'demand_projection')
+    if os.path.exists(results_dir):
+        for filename in sorted(os.listdir(results_dir), reverse=True):
+            if filename.startswith('demand_forecast_') and filename.endswith('.csv'):
+                try:
+                    scenario_name_part = filename[len('demand_forecast_'):filename.rfind('_', 0, filename.rfind('_'))]
+                    timestamp_part = filename[filename.rfind('_', 0, filename.rfind('_'))+1:].replace('.csv','')
+                    display_name = f"{scenario_name_part} ({timestamp_part})"
+                    template_context["available_scenarios"].append({'id': filename, 'display_name': display_name})
+                except Exception: # pylint: disable=broad-except
+                     template_context["available_scenarios"].append({'id': filename, 'display_name': filename})
+
+
+    scenario_a_id = request.args.get('scenario_a')
+    scenario_b_id = request.args.get('scenario_b')
+    template_context["scenario_a_id"] = scenario_a_id
+    template_context["scenario_b_id"] = scenario_b_id
+
+    if scenario_a_id:
+        template_context["scenario_a_display_name"] = next((s['display_name'] for s in template_context["available_scenarios"] if s['id'] == scenario_a_id), "N/A")
+    if scenario_b_id:
+        template_context["scenario_b_display_name"] = next((s['display_name'] for s in template_context["available_scenarios"] if s['id'] == scenario_b_id), "N/A")
+
+
+    if scenario_a_id and scenario_b_id:
+        if scenario_a_id == scenario_b_id:
+            template_context["error_message"] = "Please select two different scenarios for comparison."
+        else:
+            detail_a_df, total_a_df, err_a = _get_final_net_demand_for_scenario(project_path_abs, scenario_a_id)
+            detail_b_df, total_b_df, err_b = _get_final_net_demand_for_scenario(project_path_abs, scenario_b_id)
+
+            if err_a: template_context["error_message"] = f"Scenario A ({template_context['scenario_a_display_name']}): {err_a}"
+            if err_b: template_context["error_message"] = (template_context["error_message"] + " | " if template_context["error_message"] else "") + f"Scenario B ({template_context['scenario_b_display_name']}): {err_b}"
+
+            if detail_a_df is not None and detail_b_df is not None:
+                # Per-sector comparison table data
+                comp_df = pd.merge(
+                    detail_a_df.rename(columns={'Net_Demand': 'Net_Demand_A'}),
+                    detail_b_df.rename(columns={'Net_Demand': 'Net_Demand_B'}),
+                    on=['Year', 'Sector'],
+                    how='outer'
+                )
+                comp_df['Difference (A-B)'] = comp_df['Net_Demand_A'].fillna(0) - comp_df['Net_Demand_B'].fillna(0)
+                template_context["comparison_table"] = comp_df.to_dict(orient='records')
+
+                # Plot data for Total Net Demand
+                if total_a_df is not None and total_b_df is not None:
+                    plot_df = pd.merge(total_a_df, total_b_df, on='Year', how='outer', suffixes=('_A', '_B'))
+                    plot_df.rename(columns={'Total_Net_Demand_A': 'Scenario A', 'Total_Net_Demand_B': 'Scenario B'}, inplace=True)
+                    plot_df = plot_df.sort_values(by='Year')
+                    # Fill NaNs for plotting if one series is shorter/longer
+                    plot_df['Scenario A'] = plot_df['Scenario A'].fillna(method='ffill').fillna(method='bfill')
+                    plot_df['Scenario B'] = plot_df['Scenario B'].fillna(method='ffill').fillna(method='bfill')
+
+                    plot_data_dict = {
+                        'years': plot_df['Year'].tolist(),
+                        'scenario_a_total_net': plot_df['Scenario A'].tolist(),
+                        'scenario_b_total_net': plot_df['Scenario B'].tolist(),
+                        'scenario_a_name': template_context["scenario_a_display_name"],
+                        'scenario_b_name': template_context["scenario_b_display_name"]
+                    }
+                    template_context["plot_data_json"] = json.dumps(plot_data_dict) # Use json.dumps for safety with JS
+                else:
+                    if not template_context["error_message"]: template_context["error_message"] = "Could not generate total net demand for plotting for one or both scenarios."
+
+            elif not template_context["error_message"]: # If no specific error but one df is None
+                 template_context["error_message"] = "Failed to process one or both scenarios for comparison."
+
+
+    return render_template('compare_scenarios.html', **template_context)
 
 
 @bp.route('/upload_demand_file', methods=['POST'])

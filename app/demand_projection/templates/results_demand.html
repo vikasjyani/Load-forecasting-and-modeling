@@ -114,7 +114,8 @@
 
             <div class="nav-links" style="text-align:center; margin-top: 30px;">
                 <a href="{{ url_for('demand_projection.upload_page') }}">Configure & Run New Forecast</a>
-                <a href="{{ url_for('main.home') }}">Back to Project Home</a>
+                <a href="{{ url_for('demand_projection.compare_scenarios_route') }}" class="button-link" style="background-color:#6f42c1; margin-left:15px;">Compare Scenarios</a>
+                <a href="{{ url_for('main.home') }}" style="display:block; margin-top:15px;">Back to Project Home</a>
             </div>
         {% endif %}
     </div>
