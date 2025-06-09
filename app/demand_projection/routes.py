@@ -9,6 +9,7 @@ import os
 import pandas as pd
 from datetime import datetime
 import json # For loading display_settings.json
+import re # For scenario name extraction
 
 # Make model options available to routes in this blueprint
 AVAILABLE_MODELS_CONFIG = FH_MODEL_OPTIONS
@@ -349,15 +350,19 @@ def run_forecast_route():
                     flash(f"Failed to update project metadata for {project_folder} (update_project_metadata returned False)", "warning")
 
 
-                # Attempt to generate consolidated results
+                # Attempt to generate consolidated results using primary model selections
+                # Derive scenario_base_name for settings from the output_filepath (which includes timestamp)
+                # output_filepath is like: .../demand_forecast_ScenarioA_20231115103000.csv
+                scenario_base_name_for_settings = os.path.basename(output_filepath).replace('demand_forecast_', '').replace('.csv', '')
+
                 consolidated_output_filepath = generate_consolidated_results(
                     project_path_abs,
-                    scenario_name,
-                    output_filepath, # Pass path of the main results file
-                    demand_config    # Pass the config used for the forecast
+                    scenario_name, # This is scenario_name_from_form, used for naming the consolidated output
+                    output_filepath,
+                    scenario_base_name_for_settings # Used for loading display_settings.json
                 )
                 if consolidated_output_filepath:
-                    flash(f"Consolidated results for scenario '{scenario_name}' generated: {os.path.basename(consolidated_output_filepath)}", 'info')
+                    flash(f"Consolidated results (based on primary models) for scenario '{scenario_name}' generated: {os.path.basename(consolidated_output_filepath)}", 'info')
                     # Optionally, update project metadata again with consolidated file info
                     # This could be added to the 'last_forecast_run' dict or as a separate key.
                     metadata_update['last_forecast_run']['consolidated_file'] = os.path.basename(consolidated_output_filepath)
@@ -579,7 +584,68 @@ def save_primary_models_route(scenario_filename):
     existing_settings['primary_models'] = primary_model_selections
 
     if save_display_settings(project_path_abs, scenario_base_name, existing_settings):
-        return jsonify({'message': 'Primary model selections saved successfully!'}), 200
+        # Attempt to regenerate consolidated results
+        main_forecast_filepath = os.path.join(project_path_abs, 'results', 'demand_projection', safe_scenario_filename_from_path)
+
+        # Extract scenario_name_from_form using regex
+        scenario_name_from_form = scenario_base_name # Fallback
+        match = re.search(r"(.+)_(\d{8}_\d{6})", scenario_base_name) # scenario_base_name is already without prefix/suffix
+        if match:
+            scenario_name_from_form = match.group(1)
+        else:
+            # This fallback might occur if scenario_base_name doesn't have the expected timestamp format
+            # This could happen if original scenario_filename was unusual.
+            # For safety, use scenario_base_name which is secure_filename'd and stripped, but might include timestamp.
+            print(f"Warning: Could not parse scenario name and timestamp from '{scenario_base_name}'. Using base name for consolidated file naming.")
+
+
+        consolidated_filepath = generate_consolidated_results(
+            project_path_abs,
+            scenario_name_from_form, # User-defined part of scenario name for output file
+            main_forecast_filepath,    # Full path to the detailed forecast CSV
+            scenario_base_name         # Base name (with timestamp) for loading display_settings
+        )
+
+        if consolidated_filepath:
+            # Update metadata with the newly generated consolidated file (if different, or to confirm update)
+            try:
+                pm = ProjectManager(current_app.config['PROJECT_ROOT_ABS'])
+                project_folder = os.path.basename(project_path_abs)
+                # Load existing metadata to update last_forecast_run specifically
+                metadata = pm.get_project_metadata(project_folder)
+                if metadata and 'last_forecast_run' in metadata:
+                    # Ensure we are updating the correct scenario's metadata if multiple runs exist in a list
+                    # For now, assuming last_forecast_run is a single dict for the scenario matching scenario_base_name.
+                    # This might need adjustment if last_forecast_run is a list of all runs.
+                    # Let's assume it refers to the one matching scenario_base_name, which is implicitly handled
+                    # if a new forecast run always overwrites 'last_forecast_run'.
+                    # If scenario_filename in metadata matches safe_scenario_filename_from_path:
+                    if metadata['last_forecast_run'].get('file') == safe_scenario_filename_from_path :
+                         metadata['last_forecast_run']['consolidated_file'] = os.path.basename(consolidated_filepath)
+                         metadata['last_forecast_run']['primary_models_set_at'] = datetime.now().isoformat() + 'Z'
+                         pm.update_project_metadata(project_folder, {'last_forecast_run': metadata['last_forecast_run']})
+                    else:
+                        # This case means we're saving primary models for a scenario that isn't the absolute 'last_forecast_run'
+                        # in project metadata. This is fine, the consolidated file is still updated.
+                        # We might want to store a list of all forecast runs and their settings in project.json.
+                        # For now, just don't update the global 'last_forecast_run' if it's for a different scenario.
+                        print(f"Info: Primary models saved for {safe_scenario_filename_from_path}, but it's not the one marked as 'last_forecast_run' in project.json.")
+
+                else: # No last_forecast_run in metadata, or no metadata
+                    # This could happen if a forecast was run before metadata structure was in place
+                    # Or if the metadata points to a different scenario filename
+                    # Still, the display_settings and consolidated file specific to this scenario_base_name are updated.
+                    pass
+
+
+            except Exception as e_meta:
+                flash(f"Metadata update failed after saving primary models: {e_meta}", "warning") # This flash won't be seen by user due to jsonify
+
+            return jsonify({'message': f"Primary model selections saved. Consolidated file '{os.path.basename(consolidated_filepath)}' updated/created.",
+                            'consolidated_file': os.path.basename(consolidated_filepath)}), 200
+        else:
+            return jsonify({'message': "Primary model selections saved. Consolidated file NOT updated (e.g., no sectors had explicit primary models, or no data matched).",
+                            'consolidated_file': None}), 200
     else:
         return jsonify({'message': 'Error saving primary model selections to file.'}), 500
 

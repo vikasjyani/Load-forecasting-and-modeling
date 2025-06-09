@@ -158,16 +158,32 @@ def save_demand_config(project_path_abs, config_data):
 
 def generate_consolidated_results(project_path_abs, scenario_name, main_forecast_filepath, demand_config):
     """
-    Generates a consolidated demand forecast CSV from the main forecast results.
-    It picks the first enabled model for each sector based on the demand_config.
+    Generates a consolidated demand forecast CSV using primary model selections
+    from display_settings.json.
+
+    Args:
+        project_path_abs (str): Absolute path to the project.
+        scenario_name_from_form (str): Original scenario name (from form when forecast was run). Used for naming the output file.
+        main_forecast_filepath (str): Path to the detailed `demand_forecast_[scenario]_[timestamp].csv` file.
+        scenario_base_name_for_settings (str): Base name for display settings (e.g., "ScenarioA_20231115_103000").
     """
+    display_settings = load_display_settings(project_path_abs, scenario_base_name_for_settings)
+    primary_models = display_settings.get('primary_models', {})
+
+    if not primary_models:
+        print(f"Info: No primary models selected in display_settings for scenario '{scenario_base_name_for_settings}'. Consolidated file will not be generated based on primary model selections.")
+        # Fallback or alternative logic could be added here, e.g., use first enabled model as before,
+        # or simply do not generate the file if explicit primary selections are required.
+        # For this implementation, if no primary_models dict exists or it's empty, we don't consolidate.
+        return None
+
     try:
         main_df = pd.read_csv(main_forecast_filepath)
     except FileNotFoundError:
-        print(f"Error: Main forecast file not found at {main_forecast_filepath}") # Replace with logging
+        print(f"Error: Main forecast file not found at {main_forecast_filepath}") # Replace with proper logging
         return None
     except Exception as e:
-        print(f"Error reading main forecast file {main_forecast_filepath}: {e}") # Replace with logging
+        print(f"Error reading main forecast file {main_forecast_filepath}: {e}") # Replace with proper logging
         return None
 
     if main_df.empty:
@@ -175,61 +191,52 @@ def generate_consolidated_results(project_path_abs, scenario_name, main_forecast
         return None
 
     consolidated_rows = []
+    available_sectors_in_main_df = main_df['Sector'].unique()
 
-    # Iterate through sectors defined in the demand_config to ensure we process based on configuration
-    for sector_name, model_configs in demand_config.get('sector_models', {}).items():
-        first_enabled_model_name = None
-        # Find the first enabled model for this sector from the config
-        for mc in model_configs:
-            if mc.get('enabled', False):
-                first_enabled_model_name = mc.get('model_name')
-                break
+    for sector_name in available_sectors_in_main_df:
+        chosen_model = primary_models.get(sector_name)
 
-        if first_enabled_model_name:
-            # Filter the main DataFrame for this sector and the chosen model
+        if chosen_model and chosen_model != "": # Check if a specific model was selected (not empty string for "-- Auto --")
             sector_model_df = main_df[
                 (main_df['Sector'] == sector_name) &
-                (main_df['Model'] == first_enabled_model_name)
+                (main_df['Model'] == chosen_model)
             ]
 
             if not sector_model_df.empty:
-                # Select relevant columns: Year, Sector, Value.
-                # Add Lower_Bound and Upper_Bound if they exist and are needed downstream.
-                cols_to_select = ['Year', 'Sector', 'Value']
+                cols_to_select = ['Year', 'Sector', 'Model', 'Value'] # Start with essential
                 if 'Lower_Bound' in sector_model_df.columns: cols_to_select.append('Lower_Bound')
                 if 'Upper_Bound' in sector_model_df.columns: cols_to_select.append('Upper_Bound')
+                if 'Comment' in sector_model_df.columns: cols_to_select.append('Comment')
 
                 temp_df = sector_model_df[cols_to_select].copy()
                 consolidated_rows.append(temp_df)
             else:
-                print(f"Warning: No results found in main forecast for sector '{sector_name}' with model '{first_enabled_model_name}'.")
+                print(f"Warning: No data found in main forecast for explicitly selected primary model '{chosen_model}' for sector '{sector_name}'.")
         else:
-            # This case indicates a mismatch or an issue if a sector was expected to have an enabled model
-            print(f"Info: No enabled model found in config for sector '{sector_name}' during consolidation. This sector will not be in consolidated results.")
+            # If chosen_model is None (sector not in primary_models keys) or "" (explicitly set to Auto)
+            print(f"Info: Sector '{sector_name}' will not be included in consolidated results as no specific primary model was selected (or was set to Auto).")
 
     if not consolidated_rows:
-        print(f"Warning: No data to consolidate for scenario '{scenario_name}'. This might happen if no models were enabled or no results were generated.")
+        print(f"Warning: No data to consolidate for scenario '{scenario_name_from_form}' based on primary model selections. Consolidated file will not be saved/updated.")
         return None
 
     consolidated_df = pd.concat(consolidated_rows, ignore_index=True)
 
-    # Define filename for consolidated results
-    safe_scenario_name = "".join(c if c.isalnum() or c in ('_', '-') else '_' for c in scenario_name)
-    if not safe_scenario_name: safe_scenario_name = "scenario" # Default if all chars were invalid
+    # Use the original scenario name (from form when forecast was run) for the output file.
+    safe_output_scenario_name = "".join(c if c.isalnum() or c in ('_', '-') else '_' for c in scenario_name_from_form)
+    if not safe_output_scenario_name: safe_output_scenario_name = "scenario"
 
-    # Standardized filename, should overwrite for a given scenario if re-run
-    consolidated_filename = f"consolidated_demand_forecast_{safe_scenario_name}.csv"
+    consolidated_filename = f"consolidated_demand_forecast_{safe_output_scenario_name}.csv"
 
     output_dir = os.path.join(project_path_abs, 'results', 'demand_projection')
-    # os.makedirs(output_dir, exist_ok=True) # Should already exist from main save_demand_forecast_results
     consolidated_filepath = os.path.join(output_dir, consolidated_filename)
 
     try:
         consolidated_df.to_csv(consolidated_filepath, index=False)
-        print(f"Consolidated results for scenario '{scenario_name}' saved to {consolidated_filepath}") # Replace with logging
+        print(f"Consolidated results (from primary selections) for scenario '{scenario_name_from_form}' saved to {consolidated_filepath}")
         return consolidated_filepath
     except Exception as e:
-        print(f"Error saving consolidated results to CSV {consolidated_filepath}: {e}") # Replace with logging
+        print(f"Error saving primary-selection consolidated results to CSV {consolidated_filepath}: {e}")
         return None
 
 # ---- Display Settings File Handling ----
