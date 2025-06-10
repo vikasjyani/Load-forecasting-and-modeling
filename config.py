@@ -13,3 +13,11 @@ class Config:
     CURRENT_PROJECT_PATH_ABS = None
     CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Placeholder
     CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'  # Placeholder
+
+    # Logging Configuration
+    LOG_TO_STDOUT = True  # Set to False in production if file logging is preferred
+    LOG_FILE = 'logs/kseb_platform.log' # Path relative to BASE_DIR
+    LOG_LEVEL_FILE = 'INFO'    # e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOG_LEVEL_STDOUT = 'DEBUG' # For console output
+    LOG_ROTATING_FILE_MAX_BYTES = 1024 * 1024 * 10  # 10 MB
+    LOG_ROTATING_FILE_BACKUP_COUNT = 5 # Number of backup log files

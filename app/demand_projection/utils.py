@@ -1,4 +1,5 @@
 import numpy as np
+from flask import current_app # Added current_app
 
 def get_interpolated_td_loss(target_year, td_loss_config_list):
     """
@@ -16,35 +17,79 @@ def get_interpolated_td_loss(target_year, td_loss_config_list):
                or 0.0 if no configuration is provided or if other errors occur.
                Uses constant extrapolation if target_year is outside the configured range.
     """
-    if not td_loss_config_list or not isinstance(td_loss_config_list, list):
-        return 0.0  # Default to 0% loss if no configuration or invalid format
+    logger = current_app.logger # Get logger instance
 
-    # Ensure all entries are dicts with 'year' and 'loss_pct'
-    valid_entries = [
-        item for item in td_loss_config_list
-        if isinstance(item, dict) and 'year' in item and 'loss_pct' in item
-    ]
-
-    if not valid_entries:
-        return 0.0 # No valid entries found
-
-    # Sort the configuration by year to ensure np.interp works correctly
-    sorted_config = sorted(valid_entries, key=lambda x: x['year'])
-
-    years = np.array([item['year'] for item in sorted_config])
-    # Convert loss_pct from percentage (e.g., 5.0) to decimal (e.g., 0.05)
-    loss_percentages_decimal = np.array([item['loss_pct'] / 100.0 for item in sorted_config])
-
-    if len(years) == 0: # Should be caught by valid_entries check, but as a safeguard
+    # Validate target_year
+    if not isinstance(target_year, (int, float, np.integer, np.floating)): # Added numpy types for safety
+        logger.warning(f"T&D Loss Calc: Invalid target_year type: {type(target_year)}. Expected numeric. Returning 0.0 loss.")
         return 0.0
 
-    if len(years) == 1:
-        return loss_percentages_decimal[0] # Only one point, constant loss
+    # Validate td_loss_config_list structure
+    if not isinstance(td_loss_config_list, list):
+        logger.warning(f"T&D Loss Calc: Configuration is not a list. Target year: {target_year}. Returning 0.0 loss.")
+        return 0.0
 
-    # np.interp handles extrapolation as constant values from endpoints if target_year is outside range
-    interpolated_loss_decimal = np.interp(target_year, years, loss_percentages_decimal)
+    if not td_loss_config_list:
+        logger.info(f"T&D Loss Calc: Configuration is empty for target year {target_year}. Returning 0.0 loss.")
+        return 0.0
+
+    valid_config_points = []
+    for i, item in enumerate(td_loss_config_list):
+        if not isinstance(item, dict):
+            logger.warning(f"T&D Loss Calc: Item {i} in config is not a dictionary. Target year: {target_year}. Skipping: {item}")
+            continue
+        if 'year' not in item or 'loss_pct' not in item:
+            logger.warning(f"T&D Loss Calc: Item {i} in config missing 'year' or 'loss_pct'. Target year: {target_year}. Skipping: {item}")
+            continue
+        try:
+            year = int(item['year'])
+            loss_pct_val = float(item['loss_pct'])
+            # Basic range check for loss_pct, year range handled by interpolation/extrapolation logic
+            if not (0.0 <= loss_pct_val <= 100.0):
+                 logger.warning(f"T&D Loss Calc: Item {i} loss_pct {loss_pct_val}% is outside typical range 0-100%. Using it as is. Item: {item}")
+
+            valid_config_points.append({'year': year, 'loss_pct_decimal': loss_pct_val / 100.0}) # Store as decimal
+        except (ValueError, TypeError) as e:
+            logger.warning(f"T&D Loss Calc: Invalid data types in config item {item} for target year {target_year}. Error: {e}. Skipping.")
+            continue
+
+    if not valid_config_points:
+        logger.warning(f"T&D Loss Calc: No valid data points in configuration after validation for target year {target_year}. Returning 0.0 loss.")
+        return 0.0
+
+    # Sort the validated configuration by year
+    sorted_config = sorted(valid_config_points, key=lambda x: x['year'])
+
+    years = np.array([item['year'] for item in sorted_config])
+    loss_decimals = np.array([item['loss_pct_decimal'] for item in sorted_config])
+
+    try:
+        # Handle cases with single data point for constant extrapolation
+        if len(years) == 1:
+            interpolated_loss_decimal = loss_decimals[0]
+            logger.debug(f"T&D Loss Calc: Target year {target_year}. Single point config ({years[0]}: {interpolated_loss_decimal:.4f}). Using constant loss.")
+            return interpolated_loss_decimal
+
+        # np.interp handles extrapolation by default (repeats end values)
+        interpolated_loss_decimal = np.interp(target_year, years, loss_decimals)
+
+        if target_year < years[0]:
+            logger.debug(f"T&D Loss Calc: Target year {target_year} is before first config year {years[0]}. Extrapolating with loss {interpolated_loss_decimal:.4f} (value from year {years[0]}).")
+        elif target_year > years[-1]:
+            logger.debug(f"T&D Loss Calc: Target year {target_year} is after last config year {years[-1]}. Extrapolating with loss {interpolated_loss_decimal:.4f} (value from year {years[-1]}).")
+        else:
+            logger.debug(f"T&D Loss Calc: Target year {target_year}. Interpolated loss {interpol_loss_decimal:.4f}.")
+
+    except IndexError:
+        # This should ideally be prevented by checks for empty valid_config_points and len(years)==1
+        logger.error(f"T&D Loss Calc: IndexError during interpolation for target year {target_year} (empty years/losses array after validation, which should not happen). Returning 0.0 loss.", exc_info=True)
+        return 0.0
+    except Exception as e:
+        logger.error(f"T&D Loss Calc: Unexpected error during numpy interpolation for target year {target_year}: {e}", exc_info=True)
+        return 0.0 # Default to 0 on unexpected error
 
     return interpolated_loss_decimal
+
 
 if __name__ == '__main__':
     # Example Usage:
