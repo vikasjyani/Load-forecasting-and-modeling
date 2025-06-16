@@ -44,15 +44,7 @@ class DemandVisualizationApp {
         };
         
         // Chart color schemes
-        this.modelColors = {
-            'MLR': '#3b82f6',
-            'SLR': '#ef4444', 
-            'WAM': '#f59e0b',
-            'TimeSeries': '#10b981',
-            'User Data': '#8b5cf6'
-        };
         
-        this.sectorColors = this.generateSectorColors();
         
         this.init();
     }
@@ -484,8 +476,8 @@ class DemandVisualizationApp {
                 datasets: [{
                     label: `Total Demand (${data.unit})`,
                     data: sectorTotals,
-                    backgroundColor: sectors.map(sector => this.getSectorColor(sector) + '80'),
-                    borderColor: sectors.map(sector => this.getSectorColor(sector)),
+                    backgroundColor: sectors.map(sectorName => { const color = window.colorManager.getColor('sectors', sectorName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC'; return color + '80'; }),
+                    borderColor: sectors.map(sectorName => { return window.colorManager.getColor('sectors', sectorName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC'; }),
                     borderWidth: 2
                 }]
             },
@@ -652,12 +644,13 @@ class DemandVisualizationApp {
         }
         
         // Create datasets for each model - ALL MODELS AS LINE CHARTS
-        const datasets = sectorData.models.map((model, index) => {
+        const datasets = sectorData.models.map((modelName, index) => {
+const color = window.colorManager.getColor('models', modelName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC';
             return {
-                label: model,
-                data: sectorData[model] || [],
-                borderColor: this.modelColors[model] || this.generateRandomColor(index),
-                backgroundColor: (this.modelColors[model] || this.generateRandomColor(index)) + '20',
+                label: modelName,
+                data: sectorData[modelName] || [],
+                borderColor: color,
+                backgroundColor: color + '20',
                 borderWidth: 2,
                 pointRadius: 4,
                 pointHoverRadius: 6,
@@ -1046,12 +1039,13 @@ class DemandVisualizationApp {
         const datasets = [];
         
         // Add datasets for scenario 1 - solid lines
-        sector1Data.models.forEach((model, index) => {
+        sector1Data.models.forEach((modelName, index) => {
+const color = window.colorManager.getColor('models', modelName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC';
             datasets.push({
-                label: `${this.state.comparisonData.scenario1.name} - ${model}`,
-                data: sector1Data[model] || [],
-                borderColor: this.modelColors[model] || this.generateRandomColor(index),
-                backgroundColor: (this.modelColors[model] || this.generateRandomColor(index)) + '20',
+                label: `${this.state.comparisonData.scenario1.name} - ${modelName}`,
+                data: sector1Data[modelName] || [],
+                borderColor: color,
+                backgroundColor: color + '20',
                 borderWidth: 3,
                 pointRadius: 5,
                 pointHoverRadius: 7,
@@ -1062,12 +1056,13 @@ class DemandVisualizationApp {
         });
         
         // Add datasets for scenario 2 - dashed lines
-        sector2Data.models.forEach((model, index) => {
+        sector2Data.models.forEach((modelName, index) => {
+const color = window.colorManager.getColor('models', modelName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC';
             datasets.push({
-                label: `${this.state.comparisonData.scenario2.name} - ${model}`,
-                data: sector2Data[model] || [],
-                borderColor: this.modelColors[model] || this.generateRandomColor(index),
-                backgroundColor: (this.modelColors[model] || this.generateRandomColor(index)) + '10',
+                label: `${this.state.comparisonData.scenario2.name} - ${modelName}`,
+                data: sector2Data[modelName] || [],
+                borderColor: color,
+                backgroundColor: color + '10',
                 borderWidth: 3,
                 pointRadius: 4,
                 pointHoverRadius: 6,
@@ -1189,7 +1184,7 @@ class DemandVisualizationApp {
     }
     
     // Configuration Modal Functions
-    showConfigurationModal() {
+    async showConfigurationModal() { // Made async
         if (!this.state.currentData) {
             this.showNotification('warning', 'Please load scenario data first');
             return;
@@ -1252,6 +1247,61 @@ class DemandVisualizationApp {
         this.loadExistingTdLosses();
     }
     
+async populateColorConfiguration() {
+
+        if (!window.colorManager) {
+            console.warn('ColorManager not available for populating color configurations.');
+            return;
+        }
+
+        // Populate Sector Colors
+        const sectorColorsContainer = document.getElementById('sectorColorsConfigContent');
+        if (sectorColorsContainer) {
+            sectorColorsContainer.innerHTML = ''; // Clear previous
+            try {
+                const currentSectorColors = await window.colorManager.getCategoryColors('sectors') || {};
+                const sectors = Object.keys(this.state.currentData.sectors);
+
+                sectors.forEach(sector => {
+                    const initialColor = currentSectorColors[sector] || window.colorManager.getColor('sectors', sector); // getColor will generate if not in current/cache
+                    const itemHtml = `
+                        <div class="color-config-item">
+                            <label for="color-sector-${sector}" title="${sector}">${sector}</label>
+                            <input type="color" id="color-sector-${sector}" data-category="sectors" data-item="${sector}" value="${initialColor}">
+                        </div>
+                    `;
+                    sectorColorsContainer.insertAdjacentHTML('beforeend', itemHtml);
+                });
+            } catch (error) {
+                console.error("Error populating sector colors:", error);
+                sectorColorsContainer.innerHTML = '<p class="text-danger">Error loading sector colors.</p>';
+            }
+        }
+
+        // Populate Model Colors
+        const modelColorsContainer = document.getElementById('modelColorsConfigContent');
+        if (modelColorsContainer) {
+            modelColorsContainer.innerHTML = ''; // Clear previous
+            try {
+                const currentModelColors = await window.colorManager.getCategoryColors('models') || {};
+                const models = this.state.currentData.available_models || [];
+
+                models.forEach(model => {
+                    const initialColor = currentModelColors[model] || window.colorManager.getColor('models', model); // getColor will generate
+                    const itemHtml = `
+                        <div class="color-config-item">
+                            <label for="color-model-${model}" title="${model}">${model}</label>
+                            <input type="color" id="color-model-${model}" data-category="models" data-item="${model}" value="${initialColor}">
+                        </div>
+                    `;
+                    modelColorsContainer.insertAdjacentHTML('beforeend', itemHtml);
+                });
+            } catch (error) {
+                console.error("Error populating model colors:", error);
+                modelColorsContainer.innerHTML = '<p class="text-danger">Error loading model colors.</p>';
+            }
+        }
+    }
     async loadExistingTdLosses() {
         try {
             const response = await fetch(`${this.API_BASE}/td-losses/${this.state.currentScenario}`);
@@ -1332,8 +1382,16 @@ class DemandVisualizationApp {
         }
     }
     
-    async saveConfiguration() {
+    async async saveConfiguration() {
         try {
+            const colorSavePromises = [];
+            document.querySelectorAll('#sectorColorsConfigContent input[type="color"], #modelColorsConfigContent input[type="color"]').forEach(input => {
+                const category = input.dataset.category;
+                const item = input.dataset.item;
+                const newColor = input.value;
+                colorSavePromises.push(window.colorManager.setColor(category, item, newColor));
+            });
+
             // Collect model selection
             const modelSelection = {};
             let hasAllModels = true;
@@ -1400,6 +1458,12 @@ class DemandVisualizationApp {
             
             const consolidatedResult = await consolidatedResponse.json();
             if (consolidatedResult.success) {
+                if (modelResult.success && tdResult.success) {
+                    await Promise.all(colorSavePromises);
+                    this.showNotification('success', 'Color configurations saved successfully.');
+                    /* Optionally, reload colors if colorManager doesn't update its cache automatically */
+                    /* await window.colorManager.loadColors(); */
+                }
                 this.state.consolidatedData = consolidatedResult.data;
             }
             
@@ -1537,11 +1601,11 @@ class DemandVisualizationApp {
         );
         
         // Create datasets for sectors
-        const datasets = sectorColumns.map((sector, index) => ({
-            label: sector,
-            data: data.map(row => row[sector] || 0),
-            backgroundColor: this.getSectorColor(sector) + (chartType === 'area' ? '60' : '80'),
-            borderColor: this.getSectorColor(sector),
+        const datasets = sectorColumns.map((sectorName, index) => { const color = window.colorManager.getColor('sectors', sectorName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC'; return {
+            label: sectorName,
+            data: data.map(row => row[sectorName] || 0),
+            backgroundColor: color + (chartType === 'area' ? '60' : '80'),
+            borderColor: color,
             borderWidth: 2,
             fill: chartType === 'area',
             tension: 0.1
@@ -1551,8 +1615,8 @@ class DemandVisualizationApp {
         datasets.push({
             label: 'T&D Losses',
             data: data.map(row => row.TD_Losses || 0),
-            backgroundColor: '#ef444460',
-            borderColor: '#ef4444',
+            backgroundColor: tdLossesColor + (chartType === 'area' ? '60' : '80'),
+            borderColor: tdLossesColor,
             borderWidth: 2,
             fill: chartType === 'area',
             tension: 0.1
@@ -1696,35 +1760,9 @@ class DemandVisualizationApp {
     }
     
     // Utility Functions
-    generateSectorColors() {
-        const colors = [
-            '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
-            '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#6366f1',
-            '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'
-        ];
-        return colors;
-    }
     
-    getSectorColor(sector) {
-        const hash = this.hashCode(sector);
-        const index = Math.abs(hash) % this.sectorColors.length;
-        return this.sectorColors[index];
-    }
     
-    hashCode(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit integer
-        }
-        return hash;
-    }
     
-    generateRandomColor(index) {
-        const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
-        return colors[index % colors.length];
-    }
     
     getCommonYears(years1, years2) {
         return years1.filter(year => years2.includes(year));

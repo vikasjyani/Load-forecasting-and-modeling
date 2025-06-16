@@ -8,44 +8,11 @@ import os
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from utils.color_manager import color_manager
 
 #color palette based on Streamlit dashboard
-DEFAULT_COLORS = {
-    'Coal': '#000000', 'coal': '#000000',
-    'Lignite': '#4B4B4B', 'lignite': '#4B4B4B',
-    'Nuclear': '#800080', 'nuclear': '#800080',
-    'Hydro': '#0073CF', 'hydro': '#0073CF',
-    'Hydro RoR': '#3399FF', 'ror': '#3399FF', 'Hydro Storage': '#3399FF',
-    'Solar': '#FFD700', 'solar': '#FFD700', 'pv': '#FFD700', 'Solar PV': '#FFD700',
-    'Wind': '#ADD8E6', 'wind': '#ADD8E6', 'onwind': '#ADD8E6', 'offwind': '#ADD8E6',
-    'Onshore Wind': '#ADD8E6', 'Offshore Wind': '#6495ED',
-    'LFO': '#FF4500', 'lfo': '#FF4500', 'Oil': '#FF4500', 'oil': '#FF4500',
-    'Diesel': '#FF4500',
-    'Co-Gen': '#228B22', 'co-gen': '#228B22', 'biomass': '#228B22', 'Biomass': '#228B22',
-    'PSP': '#3399FF', 'psp': '#3399FF', 'Pumped Hydro': '#3399FF',
-    'Battery Storage': '#005B5B', 'battery': '#005B5B', 'Battery': '#005B5B',
-    'Planned Battery Storage': '#66B2B2', 'planned battery': '#66B2B2',
-    'Planned PSP': '#B0C4DE', 'planned psp': '#B0C4DE',
-    'Storage': '#B0C4DE',
-    'H2 Storage': '#AFEEEE', 'hydrogen': '#AFEEEE', 'h2': '#AFEEEE', 'H2': '#AFEEEE',
-    'Hydrogen Storage': '#AFEEEE',
-    'Load': '#000000',
-    'Transmission': '#808080', 'Line': '#808080', 'Link': '#A9A9A9',
-    'Losses': '#DC143C',
-    'Other': '#D3D3D3',
-    'Curtailment': '#FF00FF',
-    'Excess': '#FF00FF',
-    'Storage Charge': '#FFA500',
-    'Storage Discharge': '#50C878',
-    'Store Charge': '#AFEEEE',
-    'Store Discharge': '#87CEEB',
-}
 
 # Chart.js compatible color cycle
-CHARTJS_COLOR_CYCLE = [
-    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
-    '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384', '#36A2EB', '#FFCE56'
-]
 
 # --- Utility Functions ---
 def safe_get_snapshots(n: pypsa.Network) -> Union[pd.DatetimeIndex, pd.MultiIndex, pd.Index]:
@@ -155,80 +122,131 @@ def resample_data(data_df, time_index, resolution):
 
 # ---Color Palette Generation ---
 def get_color_palette(n: pypsa.Network) -> Dict[str, str]:
-    """Generate comprehensive color palette for network components."""
-    logging.debug("Generating color palette...")
-    final_colors = DEFAULT_COLORS.copy()
-    color_idx = 0
-    
-    def add_color_if_new(name, existing_colors, color_idx_ref):
-        if name not in existing_colors:
-            matched = False
-            for default_key, default_color in DEFAULT_COLORS.items():
-                if default_key.lower() in str(name).lower():
-                    existing_colors[name] = default_color
-                    matched = True
-                    break
-            if not matched:
-                existing_colors[name] = CHARTJS_COLOR_CYCLE[color_idx_ref[0] % len(CHARTJS_COLOR_CYCLE)]
-                color_idx_ref[0] += 1
-        return existing_colors[name]
+    """Generate comprehensive color palette for network components using ColorManager."""
+    logging.debug("Generating color palette using ColorManager...")
+    final_colors = {}
 
-    # Process carriers from network
+    # Process carriers from n.carriers attribute first for explicit colors or nice_names
     if hasattr(n, "carriers") and isinstance(n.carriers, pd.DataFrame) and not n.carriers.empty:
         carriers_df = n.carriers.copy()
         if 'nice_name' not in carriers_df.columns:
             carriers_df['nice_name'] = carriers_df.index
-        
+
         for carrier_idx, row in carriers_df.iterrows():
             carrier_name = str(carrier_idx)
             nice_name = str(row.get("nice_name", carrier_name))
-            
-            color_in_df = row.get("color") if "color" in row and pd.notna(row.get("color")) and row.get("color") != "" else None
-            
+
+            color_in_df = row.get("color") if "color" in row and pd.notna(row.get("color")) and str(row.get("color")).strip() != "" else None
+
             if color_in_df:
                 final_colors[nice_name] = color_in_df
-                if nice_name != carrier_name:
+                if nice_name != carrier_name and carrier_name not in final_colors:
                     final_colors[carrier_name] = color_in_df
             else:
-                color_for_nice = add_color_if_new(nice_name, final_colors, [color_idx])
-                if nice_name != carrier_name and carrier_name not in final_colors:
-                    final_colors[carrier_name] = color_for_nice
+                color_val_nice = color_manager.get_color('carriers', nice_name)
+                if color_val_nice:
+                    final_colors[nice_name] = color_val_nice
 
-    # Process component carriers
-    all_carrier_names = set()
+                if nice_name != carrier_name and carrier_name not in final_colors:
+                    color_val_orig = color_manager.get_color('carriers', carrier_name)
+                    if color_val_orig:
+                        final_colors[carrier_name] = color_val_orig
+                    elif color_val_nice: # Fallback to nice_name's color if original had none
+                         final_colors[carrier_name] = color_val_nice
+
+    # Process component carriers to ensure all are covered
+    all_component_related_names = set()
     for comp_type in ['generators', 'storage_units', 'stores', 'links']:
         if hasattr(n, comp_type):
             comp_df = getattr(n, comp_type)
             if isinstance(comp_df, pd.DataFrame) and not comp_df.empty and 'carrier' in comp_df.columns:
-                unique_carriers = comp_df['carrier'].dropna().unique()
-                for carrier in unique_carriers:
-                    nice_name = carrier
+                unique_component_carriers = comp_df['carrier'].dropna().unique()
+                for carrier in unique_component_carriers:
+                    carrier_str = str(carrier).strip()
+                    if not carrier_str: continue
+
+                    nice_name = carrier_str
                     if hasattr(n, 'carriers') and isinstance(n.carriers, pd.DataFrame) and \
-                       'nice_name' in n.carriers.columns and carrier in n.carriers.index:
-                        val = n.carriers.loc[carrier, 'nice_name']
-                        if pd.notna(val):
-                            nice_name = val
-                    
-                    all_carrier_names.add(str(nice_name))
-                    if str(nice_name) != str(carrier):
-                        all_carrier_names.add(str(carrier))
+                       'nice_name' in n.carriers.columns and carrier_str in n.carriers.index:
+                        val = n.carriers.loc[carrier_str, 'nice_name']
+                        if pd.notna(val) and str(val).strip() != "":
+                            nice_name = str(val)
 
-    # Assign colors to all carriers
-    for name in sorted(list(all_carrier_names)):
-        add_color_if_new(name, final_colors, [color_idx])
+                    all_component_related_names.add(nice_name)
+                    if nice_name != carrier_str:
+                        all_component_related_names.add(carrier_str)
 
-    # Add charge/discharge colors for storage components
-    for comp_name in final_colors.copy().keys():
-        if any(st_kw in comp_name.lower() for st_kw in ['storage', 'store', 'battery', 'psp', 'hydro', 'h2']):
-            add_color_if_new(f"{comp_name} Charge", final_colors, [color_idx])
-            add_color_if_new(f"{comp_name} Discharge", final_colors, [color_idx])
+    for name in sorted(list(all_component_related_names)):
+        if name not in final_colors: # Only if not already set (e.g., by n.carriers.color)
+            color_val = color_manager.get_color('carriers', name)
+            if color_val:
+                final_colors[name] = color_val
 
-    # Ensure essential colors exist
-    for key, color in DEFAULT_COLORS.items():
+    # Add specific colors for storage charge/discharge
+    # Iterate over a copy of keys if modifying dict during iteration, though here we add new keys
+    # Consider all names that might represent a base storage technology
+
+    # First, ensure all base storage tech names from components have colors
+    # Then, create charge/discharge variants for them.
+
+    # Collect potential base storage names from components
+    base_storage_tech_names = set()
+    for comp_type in ['storage_units', 'stores']:
+        if hasattr(n, comp_type):
+            comp_df = getattr(n, comp_type)
+            if isinstance(comp_df, pd.DataFrame) and not comp_df.empty and 'carrier' in comp_df.columns:
+                 for carrier_value in comp_df['carrier'].dropna().unique():
+                    carrier_str = str(carrier_value).strip()
+                    if not carrier_str: continue
+                    # Use nice_name if available from n.carriers
+                    nice_name = carrier_str
+                    if hasattr(n, 'carriers') and isinstance(n.carriers, pd.DataFrame) and \
+                       'nice_name' in n.carriers.columns and carrier_str in n.carriers.index:
+                        val = n.carriers.loc[carrier_str, 'nice_name']
+                        if pd.notna(val) and str(val).strip() != "":
+                            nice_name = str(val)
+                    base_storage_tech_names.add(nice_name)
+
+
+    for base_name in sorted(list(base_storage_tech_names)):
+        if base_name not in final_colors: # Ensure base tech has a color
+             color_val = color_manager.get_color('carriers', base_name)
+             if color_val: final_colors[base_name] = color_val
+
+        # Now, try to add Charge/Discharge variants
+        # For "Storage Charge"
+        charge_key = f"{base_name} Charge"
+        if charge_key not in final_colors:
+            charge_color = color_manager.get_color('status', 'charge_storage')
+            if not charge_color:
+                base_color_for_variant = final_colors.get(base_name)
+                charge_color = color_manager.get_color_variant(base_color_for_variant, 'charge') if base_color_for_variant else color_manager.get_color('charts', 'accent1', default_fallback=True)
+            if charge_color: final_colors[charge_key] = charge_color
+
+        # For "Storage Discharge"
+        discharge_key = f"{base_name} Discharge"
+        if discharge_key not in final_colors:
+            discharge_color = color_manager.get_color('status', 'discharge_storage')
+            if not discharge_color:
+                base_color_for_variant = final_colors.get(base_name)
+                discharge_color = color_manager.get_color_variant(base_color_for_variant, 'discharge') if base_color_for_variant else color_manager.get_color('charts', 'accent2', default_fallback=True)
+            if discharge_color: final_colors[discharge_key] = discharge_color
+
+    essential_keys = ['Load', 'Losses', 'Curtailment', 'Transmission', 'Other', 'Storage Charge', 'Storage Discharge']
+    for key in essential_keys:
         if key not in final_colors:
-            final_colors[key] = color
+            # Try 'components' category, then 'status', then 'default' or a specific fallback
+            color_val = color_manager.get_color('components', key)
+            if not color_val and ('Charge' in key or 'Discharge' in key): # More specific for charge/discharge if not caught above
+                 status_key_part = 'charge_storage' if 'Charge' in key else 'discharge_storage'
+                 color_val = color_manager.get_color('status', status_key_part)
+            if not color_val:
+                 color_val = color_manager.get_color('default', key, default_fallback=True) # default_fallback to ensure it returns *something*
+            if color_val: final_colors[key] = color_val
+            elif key == 'Load': final_colors[key] = '#000000' # Absolute fallback for critical keys
+            elif key == 'Losses': final_colors[key] = '#DC143C'
 
-    logging.debug(f"Generated color palette with {len(final_colors)} entries")
+    logging.debug(f"Generated color palette with {len(final_colors)} entries using ColorManager.")
     return final_colors
 
 # ---Data Extraction Functions ---
