@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Demand Projection Results</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 800px; margin: 20px auto; }
+        h1, h2 { color: #333; text-align: center; }
+        ul.flash-messages { list-style: none; padding: 0; margin-bottom: 15px; }
+        li.success { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.error, li.danger { background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.warning { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+        li.info { background-color: #cce5ff; color: #004085; padding: 10px; border-radius: 4px; margin-bottom: 5px; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f0f0f0; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+
+        .button-link {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 5px 0;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .button-link:hover { background-color: #0056b3; }
+
+        .nav-links { margin-top: 20px; }
+        .nav-links a { margin-right: 15px; text-decoration: none; color: #007bff; }
+        .nav-links a:hover { text-decoration: underline; }
+
+        .project-info { margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Demand Projection Results</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-messages">
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        {% if not current_project_name_g %}
+            <p class="warning" style="text-align:center;">No project is currently loaded. Please load or create a project first from the <a href="{{ url_for('main.home') }}">home page</a>.</p>
+        {% else %}
+            <div class="project-info">
+                Current Project: <strong>{{ current_project_name_g }}</strong>
+            </div>
+
+            <form method="GET" action="{{ url_for('demand_projection.results_page_route') }}" style="margin-bottom: 20px; text-align:center;">
+                <label for="scenario_id_select" style="display:inline-block; margin-right:10px;">Select Forecast Scenario:</label>
+                <select name="scenario_id" id="scenario_id_select" onchange="this.form.submit()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; min-width: 300px;">
+                    <option value="">-- Select a Scenario --</option>
+                    {% for scenario in available_scenarios %}
+                        <option value="{{ scenario.id }}" {% if scenario.id == selected_scenario_id %}selected{% endif %}>
+                            {{ scenario.display_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <noscript><button type="submit" class="button-link" style="display:inline-block; margin-left:10px;">Load Scenario</button></noscript>
+            </form>
+            <hr>
+
+           {% if selected_scenario_id %}
+               <h2>Results for Scenario: {{ scenario_name_display }}</h2>
+               {% if results_files %}
+               <table>
+                   <thead>
+                       <tr>
+                           <th>File Type</th>
+                           <th>Filename</th>
+                           <th>Action</th>
+                       </tr>
+                   </thead>
+                   <tbody>
+                   {% for file_info in results_files %}
+                       <tr>
+                           <td>{{ file_info.type }}</td>
+                           <td>{{ file_info.name }}</td>
+                           <td><a href="{{ url_for('demand_projection.download_result_route', filename=file_info.name) }}" class="button-link">Download</a></td>
+                       </tr>
+                   {% endfor %}
+                   </tbody>
+               </table>
+               {% else %}
+                   <p style="text-align:center; font-style:italic;">No downloadable files found for scenario '{{ scenario_name_display }}'. This might indicate an issue with file generation or naming.</p>
+               {% endif %}
+
+               {# Link to sector details page - active_consolidated_file is a proxy for "results exist" #}
+               {% if results_files %} {# More direct check: if any results files are listed, allow viewing details #}
+               <div style="margin-top: 20px; text-align:center;">
+                   <a href="{{ url_for('demand_projection.view_sector_detail_route', scenario_filename=selected_scenario_id) }}" class="button-link" style="background-color:#5cb85c;">
+                       View Sector Details &amp; Configure Primary Models for '{{ scenario_name_display }}'
+                   </a>
+               </div>
+               {% endif %}
+
+           {% elif available_scenarios %}
+                <p style="text-align:center; font-style:italic;">Please select a scenario from the dropdown above to view its results.</p>
+           {% else %}
+                <p style="text-align:center; font-style:italic;">No forecast results found for this project. Please run a forecast first.</p>
+           {% endif %}
+
+            <div class="nav-links" style="text-align:center; margin-top: 30px;">
+                <a href="{{ url_for('demand_projection.upload_page') }}">Configure & Run New Forecast</a>
+                <a href="{{ url_for('demand_projection.compare_scenarios_route') }}" class="button-link" style="background-color:#6f42c1; margin-left:15px;">Compare Scenarios</a>
+                <a href="{{ url_for('main.home') }}" style="display:block; margin-top:15px;">Back to Project Home</a>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>
