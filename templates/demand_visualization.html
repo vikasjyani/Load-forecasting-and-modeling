@@ -1,0 +1,915 @@
+{% extends "sidebar_layout.html" %}
+
+{% block title %}Demand Visualization & Analysis{% endblock %}
+
+{% block additional_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar-layout.css') }}">
+<style>
+/* Enhanced Demand Visualization Styles */
+.viz-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.scenario-header {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 1rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 8px 32px rgba(14, 165, 233, 0.2);
+}
+
+.scenario-select-container {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.scenario-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.scenario-info.show {
+    opacity: 1;
+}
+
+.info-item {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 1rem;
+    border-radius: 0.75rem;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.info-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.info-label {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+.filters-section {
+    background: white;
+    border-radius: 1rem;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e2e8f0;
+    display: none;
+}
+
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    align-items: end;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.analysis-panel {
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    display: none;
+}
+
+.panel-header {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #334155;
+    margin: 0;
+}
+
+.panel-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.panel-content {
+    padding: 2rem;
+}
+
+.view-tabs {
+    display: flex;
+    background: #f1f5f9;
+    border-radius: 0.75rem;
+    padding: 0.5rem;
+    margin-bottom: 2rem;
+    gap: 0.25rem;
+}
+
+.view-tab {
+    flex: 1;
+    padding: 0.875rem 1.25rem;
+    background: transparent;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.view-tab.active {
+    background: white;
+    color: #0ea5e9;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.view-tab:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.7);
+    color: #475569;
+}
+
+.view-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.view-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.metric-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.metric-label {
+    color: #64748b;
+    font-weight: 500;
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #0ea5e9;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+
+.metric-detail {
+    color: #64748b;
+    font-size: 0.875rem;
+}
+
+.data-table-container {
+    overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    max-height: 500px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    min-width: 600px;
+}
+
+.data-table th {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 2px solid #e2e8f0;
+    font-weight: 600;
+    color: #374151;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.data-table td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #374151;
+}
+
+.data-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.chart-container {
+    position: relative;
+    min-height: 400px;
+    background: #fafbfc;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.chart-canvas {
+    width: 100% !important;
+    height: auto !important;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #64748b;
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1.5rem;
+    opacity: 0.6;
+    color: #94a3b8;
+}
+
+.empty-state h5 {
+    margin-bottom: 1rem;
+    color: #374151;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 1rem;
+    max-width: 700px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.modal-overlay.show .modal-content {
+    transform: scale(1);
+}
+
+.modal-header {
+    padding: 2rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 1rem 1rem 0 0;
+}
+
+.modal-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #374151;
+    margin: 0;
+}
+
+.modal-body {
+    padding: 2rem;
+}
+
+.model-config-item {
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+    background: #f8fafc;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+}
+
+.sector-name {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+}
+
+.td-losses-item {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 1.5rem;
+    background: #f8fafc;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+}
+
+.analysis-actions {
+    background: #f8fafc;
+    padding: 1.5rem 2rem;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    border-radius: 0 0 1rem 1rem;
+}
+
+/* Button Enhancements */
+.btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
+
+.btn-outline-primary {
+    background: transparent;
+    border: 2px solid #0ea5e9;
+    color: #0ea5e9;
+}
+
+.btn-outline-primary:hover {
+    background: #0ea5e9;
+    color: white;
+}
+
+.btn-outline-warning {
+    background: transparent;
+    border: 2px solid #f59e0b;
+    color: #f59e0b;
+}
+
+.btn-outline-warning:hover {
+    background: #f59e0b;
+    color: white;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+/* Form Enhancements */
+.form-select, .form-control {
+    padding: 0.75rem 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 0.5rem;
+    background: white;
+    transition: all 0.2s ease;
+    font-size: 0.875rem;
+}
+
+.form-select:focus, .form-control:focus {
+    outline: none;
+    border-color: #0ea5e9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+.form-label {
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .viz-container {
+        padding: 0.5rem;
+    }
+    
+    .scenario-header {
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .scenario-select-container {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .filters-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .filter-actions {
+        flex-direction: column;
+    }
+    
+    .panel-header {
+        padding: 1rem;
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    .panel-content {
+        padding: 1rem;
+    }
+    
+    .view-tabs {
+        flex-direction: column;
+    }
+    
+    .metric-card {
+        padding: 1rem;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 1rem;
+    }
+    
+    .modal-header, .modal-body, .analysis-actions {
+        padding: 1rem;
+    }
+    
+    .td-losses-item {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+}
+
+/* Notification Enhancement */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    max-width: 400px;
+    padding: 1rem 1.5rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: white;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+}
+
+.notification.show {
+    transform: translateX(0);
+}
+
+/* Loading Enhancement */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+}
+
+.loading-spinner {
+    color: white;
+    text-align: center;
+    font-size: 1.2rem;
+}
+
+.loading-spinner i {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Chart Button Group */
+.btn-group-sm .btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+.btn-group .btn:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.btn-group .btn:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.btn-group .btn:not(:first-child):not(:last-child) {
+    border-radius: 0;
+}
+
+.btn-group .btn.active {
+    background: #0ea5e9;
+    color: white;
+    border-color: #0ea5e9;
+}
+</style>
+{% endblock %}
+
+{% block page_header_title %}
+Demand Visualization & Analysis
+{% endblock %}
+
+{% block page_header_subtitle %}
+Interactive Electricity Demand Forecasting Analysis
+{% endblock %}
+
+{% block content %}
+<div class="viz-container">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category if category != 'message' else 'info' }} alert-dismissible fade show" role="alert">
+        <i class="fas {% if category == 'success' %}fa-check-circle{% elif category == 'danger' %}fa-exclamation-triangle{% elif category == 'warning' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %} me-2"></i>
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- Scenario Selection Header -->
+    <div class="scenario-header">
+        <div class="scenario-select-container">
+            <div style="flex: 1;">
+                <h3 style="margin: 0 0 1rem 0; font-size: 1.5rem;">
+                    <i class="fas fa-chart-line me-2"></i>Demand Forecast Analysis
+                </h3>
+                <select id="scenarioSelect" class="form-select form-select-lg" style="background: white; color: #374151;">
+                    <option value="">Choose a demand forecast scenario...</option>
+                    {% for scenario in scenarios %}
+                    <option value="{{ scenario.name }}" 
+                            data-sectors="{{ scenario.sectors_count }}"
+                            data-files="{{ scenario.file_count }}"
+                            data-year-min="{{ scenario.year_range.min }}"
+                            data-year-max="{{ scenario.year_range.max }}">
+                        {{ scenario.name }} ({{ scenario.sectors_count }} sectors)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="d-flex gap-3">
+                <button class="btn btn-light" id="refreshBtn" title="Refresh Scenarios">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn btn-warning" id="comparisonBtn" title="Compare Scenarios" disabled>
+                    <i class="fas fa-balance-scale me-1"></i>Compare
+                </button>
+            </div>
+        </div>
+        
+        <div class="scenario-info" id="scenarioInfo">
+            <div class="info-item">
+                <span class="info-value" id="sectorsCount">0</span>
+                <div class="info-label">Sectors</div>
+            </div>
+            <div class="info-item">
+                <span class="info-value" id="filesCount">0</span>
+                <div class="info-label">Data Files</div>
+            </div>
+            <div class="info-item">
+                <span class="info-value" id="yearRange">-</span>
+                <div class="info-label">Year Range</div>
+            </div>
+            <div class="info-item">
+                <span class="info-value" id="dataStatus">Ready</span>
+                <div class="info-label">Status</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="filters-section" id="filtersSection">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 style="margin: 0; color: #374151;">
+                <i class="fas fa-filter me-2"></i>Analysis Filters
+            </h5>
+            <small class="text-muted">
+                Changes require clicking "Apply Filters" to take effect
+            </small>
+        </div>
+        
+        <div class="filters-grid">
+            <div class="filter-group">
+                <label class="form-label">Unit</label>
+                <select id="unitSelect" class="form-select">
+                    <option value="TWh">TWh (Terawatt-hours)</option>
+                    <option value="GWh">GWh (Gigawatt-hours)</option>
+                    <option value="MWh">MWh (Megawatt-hours)</option>
+                    <option value="kWh">kWh (Kilowatt-hours)</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label class="form-label">Start Year</label>
+                <select id="startYearSelect" class="form-select">
+                    <!-- Years will be populated dynamically -->
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label class="form-label">End Year</label>
+                <select id="endYearSelect" class="form-select">
+                    <!-- Years will be populated dynamically -->
+                </select>
+            </div>
+            
+            <div class="filter-actions">
+                <button class="btn btn-primary" id="applyFiltersBtn">
+                    <i class="fas fa-search me-1"></i>Apply Filters
+                </button>
+                <button class="btn btn-outline-secondary" id="resetFiltersBtn">
+                    <i class="fas fa-undo me-1"></i>Reset
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Analysis Panel -->
+    <div class="analysis-panel" id="analysisPanel">
+        <div class="panel-header">
+            <h5 class="panel-title" id="panelTitle">Scenario Analysis</h5>
+            <div class="panel-actions">
+                <button class="btn btn-primary btn-sm" id="configureBtn">
+                    <i class="fas fa-cogs me-1"></i>Configure
+                </button>
+                <button class="btn btn-outline-primary btn-sm" id="exportBtn">
+                    <i class="fas fa-download me-1"></i>Export
+                </button>
+            </div>
+        </div>
+        
+        <div class="panel-content">
+            <!-- View Tabs -->
+            <div class="view-tabs">
+                <button class="view-tab active" data-view="overview">
+                    <i class="fas fa-chart-bar"></i>
+                    Overview
+                </button>
+                <button class="view-tab" data-view="sectors">
+                    <i class="fas fa-table"></i>
+                    Sector Analysis
+                </button>
+                <button class="view-tab" data-view="comparison" id="comparisonTab" style="display: none;">
+                    <i class="fas fa-balance-scale"></i>
+                    Comparison
+                </button>
+                <button class="view-tab" data-view="consolidated">
+                    <i class="fas fa-chart-area"></i>
+                    Consolidated Results
+                </button>
+            </div>
+            
+            <!-- Overview View -->
+            <div class="view-content active" data-view="overview">
+                <div id="overviewContent">
+                    <div class="empty-state">
+                        <i class="fas fa-chart-line"></i>
+                        <h5>Select a scenario to view analysis</h5>
+                        <p>Choose a demand forecast scenario from the dropdown above to start your analysis.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sector Analysis View -->
+            <div class="view-content" data-view="sectors">
+                <div id="sectorContent">
+                    <div class="empty-state">
+                        <i class="fas fa-table"></i>
+                        <h5>No sector data loaded</h5>
+                        <p>Please select a scenario and apply filters to view sector-wise demand data.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Comparison View -->
+            <div class="view-content" data-view="comparison">
+                <div id="comparisonContent">
+                    <div class="empty-state">
+                        <i class="fas fa-balance-scale"></i>
+                        <h5>Comparison Mode</h5>
+                        <p>Click the "Compare" button to select scenarios for side-by-side analysis.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Consolidated Results View -->
+            <div class="view-content" data-view="consolidated">
+                <div id="consolidatedContent">
+                    <div class="empty-state">
+                        <i class="fas fa-chart-area"></i>
+                        <h5>Consolidated Results</h5>
+                        <p>Configure model selection and T&D losses to generate consolidated demand analysis.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Model Configuration Modal -->
+<div class="modal-overlay" id="modelConfigModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Model Configuration & T&D Losses</h5>
+            <button class="btn btn-sm btn-outline-secondary" id="closeModelModal">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="mb-4">
+                <h6 class="mb-3">
+                    <i class="fas fa-cogs me-2"></i>Model Selection
+                </h6>
+                <p class="text-muted mb-3">Select the preferred forecasting model for each sector:</p>
+                <div id="modelConfigContent">
+                    <!-- Model configuration items will be populated here -->
+                </div>
+            </div>
+            
+            <div>
+                <h6 class="mb-3">
+                    <i class="fas fa-chart-bar me-2"></i>T&D Losses Configuration
+                </h6>
+                <p class="text-muted mb-3">Configure transmission and distribution losses by year. The system will interpolate values between points:</p>
+                <div id="tdLossesContent">
+                    <!-- T&D losses configuration items will be populated here -->
+                </div>
+                <button class="btn btn-sm btn-outline-primary mt-3" id="addTdLossBtn">
+                    <i class="fas fa-plus me-1"></i>Add Year
+                </button>
+            </div>
+        </div>
+        <div class="analysis-actions">
+            <button class="btn btn-outline-secondary" id="cancelConfigBtn">Cancel</button>
+            <button class="btn btn-primary" id="saveConfigBtn">
+                <i class="fas fa-save me-1"></i>Save & Generate Results
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Comparison Selection Modal -->
+<div class="modal-overlay" id="comparisonModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Scenario Comparison</h5>
+            <button class="btn btn-sm btn-outline-secondary" id="closeComparisonModal">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="mb-4">
+                <p class="text-muted mb-3">
+                    Compare the current scenario with another scenario to analyze differences in forecasting models and results.
+                </p>
+                <div class="filter-group">
+                    <label class="form-label">Compare <strong id="currentScenarioName"></strong> with:</label>
+                    <select id="comparisonScenarioSelect" class="form-select">
+                        <option value="">Select scenario to compare...</option>
+                        {% for scenario in scenarios %}
+                        <option value="{{ scenario.name }}">{{ scenario.name }} ({{ scenario.sectors_count }} sectors)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            
+            <div class="bg-light p-3 rounded">
+                <h6 class="mb-2">
+                    <i class="fas fa-info-circle me-2"></i>Comparison Features
+                </h6>
+                <ul class="mb-0 text-sm">
+                    <li>Side-by-side sector analysis with all models</li>
+                    <li>Individual sector model comparisons</li>
+                    <li>Consolidated results comparison (if available)</li>
+                    <li>Export comparison charts and data</li>
+                </ul>
+            </div>
+        </div>
+        <div class="analysis-actions">
+            <button class="btn btn-outline-secondary" id="cancelComparisonBtn">Cancel</button>
+            <button class="btn btn-primary" id="startComparisonBtn" disabled>
+                <i class="fas fa-balance-scale me-1"></i>Start Comparison
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden Data Store -->
+<div style="display: none;">
+    <script type="application/json" id="initialData">
+    {
+        "scenarios": {{ scenarios | tojson | safe }},
+        "hasScenarios": {{ has_scenarios | tojson | safe }},
+        "currentProject": {{ current_project | tojson | safe }}
+    }
+    </script>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/demand_visualization.js') }}"></script>
+{% endblock %}

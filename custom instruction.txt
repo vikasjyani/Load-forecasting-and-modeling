@@ -1,0 +1,478 @@
+# Custom Instructions for KSEB Energy Futures Platform Development
+
+## Project Overview
+
+You are helping develop the KSEB Energy Futures Platform, a comprehensive Flask-based web application for electricity demand forecasting, load profile generation, and power system modeling using PyPSA. This is a production-grade scientific computing application that uses file-based storage (Excel, CSV, JSON) without a traditional database.
+
+## Core Development Principles
+
+### 1. Technology Stack (STRICT - No Deviations)
+- **Backend**: Python with Flask (no FastAPI, Django, or other frameworks)
+- **Frontend**: Vanilla JavaScript, HTML5, CSS3 (no React, Vue, Angular, or jQuery)
+- **Data Storage**: File-based only (Excel, CSV, JSON) - NO DATABASE
+- **Task Queue**: Celery with Redis for background jobs
+- **Real-time**: Flask-SocketIO for progress updates
+- **Scientific Libraries**: pandas, numpy, PyPSA, scikit-learn, matplotlib, openpyxl
+- **Deployment**: Gunicorn with Nginx reverse proxy
+
+### 2. Project Structure (MANDATORY)
+```
+kseb_energy_platform/
+├── app/
+│   ├── __init__.py              # Application factory
+│   ├── auth/                    # Authentication blueprint (file-based)
+│   ├── main/                    # Main routes blueprint
+│   ├── api/                     # API endpoints blueprint
+│   ├── demand_projection/       # Demand forecasting module
+│   ├── load_profile/           # Load profile generation module
+│   ├── pypsa_modeling/         # PyPSA integration module
+│   ├── admin/                  # Admin panel blueprint
+│   ├── static/                 # CSS, JS, images
+│   │   ├── css/
+│   │   ├── js/
+│   │   │   ├── components/     # Reusable JS components
+│   │   │   ├── modules/        # Feature-specific JS
+│   │   │   └── utils/          # Utility functions
+│   │   └── img/
+│   ├── templates/              # Jinja2 templates
+│   └── utils/                  # Shared utilities
+├── projects/                   # User projects directory
+│   └── [project_name]/         # Individual project folders
+│       ├── inputs/             # Input files (Excel, CSV)
+│       ├── results/            # Output files
+│       │   ├── demand_projection/
+│       │   ├── load_profiles/
+│       │   ├── PyPSA_Modeling/
+│       │   └── Pypsa_results/
+│       ├── logs/               # Project logs
+│       └── config/             # Project configuration (JSON)
+├── templates/                  # File templates
+│   ├── input_demand_file.xlsx
+│   ├── load_curve_template.xlsx
+│   └── pypsa_input_template.xlsx
+├── tests/                      # Test suite
+├── config.py                   # Configuration classes
+├── requirements.txt            # Python dependencies
+└── run.py                     # Application entry point
+```
+
+### 3. File Storage Architecture
+
+```python
+# File organization pattern
+PROJECT_ROOT = "projects"
+PROJECT_STRUCTURE = {
+    "inputs": {},
+    "results": {
+        "demand_projection": {},
+        "load_profiles": {},
+        "PyPSA_Modeling": {},
+        "Pypsa_results": {}
+    },
+    "logs": {},
+    "config": {}
+}
+
+# File naming conventions
+# Demand results: demand_forecast_{scenario}_{timestamp}.csv
+# Load profiles: load_profile_{scenario}_{year}_{resolution}.csv
+# PyPSA results: pypsa_results_{scenario}_{timestamp}.json
+# Consolidated: consolidated_results_{scenario}.csv
+```
+
+### 4. Development Priorities (IN ORDER)
+
+1. **Phase 1 - Foundation**
+   - Flask application factory setup
+   - Basic project structure
+   - Configuration management
+   - File system utilities
+   - Simple session-based authentication
+
+2. **Phase 2 - Project Management**
+   - Project directory creation/validation
+   - File system management utilities
+   - Recent projects tracking (JSON file)
+   - Project metadata management
+   - Template file copying
+
+3. **Phase 3 - Demand Projection Module**
+   - Excel file upload/validation
+   - Multiple forecasting models (SLR, MLR, WAM, Time Series)
+   - Background job processing
+   - Results saved as CSV/Excel
+   - Visualization from CSV data
+
+4. **Phase 4 - Load Profile Generation**
+   - Read historical Excel data
+   - Process demand forecast CSVs
+   - Generate hourly/sub-hourly profiles
+   - Save profiles as CSV
+   - Analysis tools reading CSV data
+
+5. **Phase 5 - PyPSA Integration**
+   - Read configuration from Excel
+   - Load profile CSV integration
+   - Background optimization tasks
+   - Save results as JSON/CSV
+   - Network visualization from files
+
+6. **Phase 6 - Admin & Polish**
+   - Feature toggles (JSON config)
+   - System monitoring
+   - Performance optimization
+   - Documentation
+
+## Coding Standards
+
+### Python Code Guidelines
+
+1. **Flask Patterns Without Database**
+   ```python
+   # Application factory without database
+   def create_app(config_class=Config):
+       app = Flask(__name__)
+       app.config.from_object(config_class)
+       
+       # Initialize extensions (no db)
+       celery.init_app(app)
+       socketio.init_app(app)
+       
+       # Ensure project directory exists
+       os.makedirs(app.config['PROJECT_ROOT'], exist_ok=True)
+       
+       # Register blueprints
+       from app.demand_projection import bp as dp_bp
+       app.register_blueprint(dp_bp, url_prefix='/demand_projection')
+       
+       return app
+   ```
+
+2. **File Management Utilities**
+   ```python
+   # Core file operations
+   import os
+   import json
+   import pandas as pd
+   from datetime import datetime
+   from werkzeug.utils import secure_filename
+   
+   class ProjectManager:
+       def __init__(self, project_root):
+           self.project_root = project_root
+       
+       def create_project(self, project_name):
+           """Create project directory structure"""
+           project_path = os.path.join(self.project_root, secure_filename(project_name))
+           
+           # Create directory structure
+           for folder in ['inputs', 'results/demand_projection', 
+                         'results/load_profiles', 'results/PyPSA_Modeling',
+                         'results/Pypsa_results', 'logs', 'config']:
+               os.makedirs(os.path.join(project_path, folder), exist_ok=True)
+           
+           # Create project metadata
+           metadata = {
+               'name': project_name,
+               'created': datetime.now().isoformat(),
+               'last_modified': datetime.now().isoformat()
+           }
+           
+           with open(os.path.join(project_path, 'config', 'project.json'), 'w') as f:
+               json.dump(metadata, f, indent=2)
+           
+           return project_path
+   ```
+
+3. **Data Processing Pattern**
+   ```python
+   # Always work with files, not database
+   def save_demand_forecast_results(project_path, scenario_name, results_df):
+       """Save forecast results to CSV"""
+       timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+       filename = f"demand_forecast_{scenario_name}_{timestamp}.csv"
+       filepath = os.path.join(project_path, 'results', 'demand_projection', filename)
+       
+       results_df.to_csv(filepath, index=False)
+       
+       # Update project metadata
+       update_project_metadata(project_path, {
+           'last_forecast': {
+               'scenario': scenario_name,
+               'timestamp': timestamp,
+               'file': filename
+           }
+       })
+       
+       return filepath
+   ```
+
+4. **Session Management Without Database**
+   ```python
+   # Simple file-based user session
+   from flask import session
+   import json
+   
+   def load_user_preferences():
+       """Load user preferences from JSON file"""
+       user_file = f"users/{session.get('username', 'default')}.json"
+       if os.path.exists(user_file):
+           with open(user_file, 'r') as f:
+               return json.load(f)
+       return {}
+   
+   def save_recent_projects(username, project_list):
+       """Save recent projects list to JSON"""
+       user_dir = f"users/{username}"
+       os.makedirs(user_dir, exist_ok=True)
+       
+       with open(f"{user_dir}/recent_projects.json", 'w') as f:
+           json.dump(project_list, f, indent=2)
+   ```
+
+### JavaScript Code Guidelines
+
+1. **File Upload Handling**
+   ```javascript
+   class FileUploadManager {
+       constructor(uploadUrl, allowedTypes = ['.xlsx', '.csv']) {
+           this.uploadUrl = uploadUrl;
+           this.allowedTypes = allowedTypes;
+       }
+       
+       async uploadFile(file, projectPath) {
+           const formData = new FormData();
+           formData.append('file', file);
+           formData.append('project_path', projectPath);
+           
+           const response = await fetch(this.uploadUrl, {
+               method: 'POST',
+               body: formData
+           });
+           
+           if (!response.ok) {
+               throw new Error('Upload failed');
+           }
+           
+           return response.json();
+       }
+   }
+   ```
+
+2. **Data Loading from Files**
+   ```javascript
+   // Load CSV data for visualization
+   async function loadCSVData(filePath) {
+       const response = await fetch(`/api/read_file?path=${encodeURIComponent(filePath)}&type=csv`);
+       const data = await response.json();
+       return data;
+   }
+   
+   // Load project metadata
+   async function loadProjectInfo(projectName) {
+       const response = await fetch(`/api/project/${projectName}/metadata`);
+       return response.json();
+   }
+   ```
+
+## Module-Specific Guidelines
+
+### Demand Projection Module
+- Read input from `inputs/input_demand_file.xlsx`
+- Validate Excel structure and required sheets
+- Save all results as CSV in `results/demand_projection/`
+- Create consolidated results file: `consolidated_results_{scenario}.csv`
+- Store model parameters in `config/demand_config.json`
+
+### Load Profile Generation
+- Read base profiles from `inputs/load_curve_template.xlsx`
+- Read demand forecasts from `results/demand_projection/consolidated_results_{scenario}.csv`
+- Generate profiles and save as `results/load_profiles/profile_{year}_{resolution}.csv`
+- Save generation parameters in `config/load_profile_config.json`
+
+### PyPSA Integration
+- Read network configuration from `inputs/pypsa_input_template.xlsx`
+- Read load profiles from `results/load_profiles/`
+- Save optimization results as `results/Pypsa_results/pypsa_{scenario}_{timestamp}.json`
+- Export summary CSVs for key metrics
+- Store large network objects as pickle files if needed
+
+## API Design for File Operations
+
+```python
+# File-based API endpoints
+@bp.route('/api/projects', methods=['GET'])
+def list_projects():
+    """List all projects from filesystem"""
+    projects = []
+    for project_dir in os.listdir(app.config['PROJECT_ROOT']):
+        metadata_path = os.path.join(app.config['PROJECT_ROOT'], 
+                                   project_dir, 'config', 'project.json')
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                projects.append(json.load(f))
+    return jsonify(projects)
+
+@bp.route('/api/read_file', methods=['GET'])
+def read_file():
+    """Read CSV/JSON file and return data"""
+    file_path = request.args.get('path')
+    file_type = request.args.get('type', 'csv')
+    
+    # Security: Ensure path is within project directory
+    if not is_safe_path(file_path, app.config['PROJECT_ROOT']):
+        abort(403)
+    
+    if file_type == 'csv':
+        df = pd.read_csv(file_path)
+        return jsonify(df.to_dict(orient='records'))
+    elif file_type == 'json':
+        with open(file_path, 'r') as f:
+            return jsonify(json.load(f))
+
+@bp.route('/api/save_results', methods=['POST'])
+def save_results():
+    """Save computation results to file"""
+    data = request.json
+    project_path = data['project_path']
+    result_type = data['result_type']
+    results = data['results']
+    
+    # Save based on type
+    if result_type == 'demand_forecast':
+        df = pd.DataFrame(results)
+        filepath = save_demand_forecast_results(project_path, 
+                                              data['scenario'], df)
+    
+    return jsonify({'success': True, 'filepath': filepath})
+```
+
+## File Security Considerations
+
+```python
+import os
+from werkzeug.utils import secure_filename
+
+def is_safe_path(path, base_dir):
+    """Ensure path is within base directory"""
+    # Resolve to absolute paths
+    base_path = os.path.abspath(base_dir)
+    target_path = os.path.abspath(os.path.join(base_dir, path))
+    
+    # Check if target path is within base path
+    return target_path.startswith(base_path)
+
+def validate_file_upload(file):
+    """Validate uploaded file"""
+    ALLOWED_EXTENSIONS = {'xlsx', 'csv', 'json'}
+    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+    
+    # Check file extension
+    if '.' not in file.filename:
+        return False, "No file extension"
+    
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return False, f"Invalid file type: {ext}"
+    
+    # Check file size
+    file.seek(0, os.SEEK_END)
+    size = file.tell()
+    file.seek(0)
+    
+    if size > MAX_FILE_SIZE:
+        return False, "File too large"
+    
+    return True, "Valid"
+```
+
+## Performance Optimizations for File Operations
+
+1. **Large File Handling**
+   ```python
+   # Read large CSV files in chunks
+   def process_large_csv(filepath, chunksize=10000):
+       for chunk in pd.read_csv(filepath, chunksize=chunksize):
+           yield process_chunk(chunk)
+   
+   # Stream file reading for API responses
+   def stream_csv_data(filepath):
+       def generate():
+           with open(filepath, 'r') as f:
+               yield f.readline()  # Headers
+               for line in f:
+                   yield line
+       return Response(generate(), mimetype='text/csv')
+   ```
+
+2. **Caching File Metadata**
+   ```python
+   from functools import lru_cache
+   import hashlib
+   
+   @lru_cache(maxsize=100)
+   def get_file_info(filepath):
+       """Cache file metadata to avoid repeated disk access"""
+       stat = os.stat(filepath)
+       with open(filepath, 'rb') as f:
+           file_hash = hashlib.md5(f.read(1024)).hexdigest()
+       
+       return {
+           'size': stat.st_size,
+           'modified': stat.st_mtime,
+           'hash': file_hash
+       }
+   ```
+
+## Common Pitfalls to Avoid
+
+1. **DO NOT**:
+   - Use any database (SQLite, PostgreSQL, etc.)
+   - Store data in memory without saving to files
+   - Use absolute file paths
+   - Allow file access outside project directories
+   - Skip file validation
+   - Load entire large files into memory at once
+   - Use pickle for user-facing data (security risk)
+
+2. **ALWAYS**:
+   - Save all results to appropriate CSV/JSON files
+   - Use secure_filename() for user inputs
+   - Validate file paths are within project directory
+   - Create backups before overwriting files
+   - Use chunked reading for large files
+   - Implement file locking for concurrent access
+   - Clean up temporary files
+
+## Data File Formats
+
+### Demand Projection Results CSV
+```csv
+Year,Sector,Model,Value,Lower_Bound,Upper_Bound
+2025,Domestic,MLR,5234.5,5100.2,5368.8
+2025,Commercial,MLR,2567.3,2489.1,2645.5
+```
+
+### Load Profile CSV
+```csv
+Timestamp,Load_MW,Temperature,Day_Type
+2025-01-01 00:00:00,3245.6,22.5,Holiday
+2025-01-01 01:00:00,3102.3,21.8,Holiday
+```
+
+### Project Metadata JSON
+```json
+{
+  "name": "Solar_Integration_2025",
+  "created": "2024-01-15T10:30:00",
+  "last_modified": "2024-01-16T14:45:00",
+  "description": "Solar integration study for 2025-2030",
+  "status": "active",
+  "last_results": {
+    "demand_projection": "demand_forecast_high_growth_20240116_144500.csv",
+    "load_profile": "load_profile_2025_hourly.csv"
+  }
+}
+```
+
+Remember: This is a file-based system without a traditional database. All data persistence happens through CSV, Excel, and JSON files organized in a structured project directory hierarchy.
