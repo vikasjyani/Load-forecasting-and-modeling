@@ -1,0 +1,38 @@
+{
+  "model_selection": {
+    "Agriculture": "WAM",
+    "Commercial_lt": "WAM",
+    "Domestic_lt": "WAM",
+    "ev_transport": "User Data",
+    "green_hydrogen": "User Data",
+    "ht_eht": "WAM",
+    "industrial_lt": "WAM",
+    "licencees": "WAM",
+    "public_lighting": "WAM",
+    "railway_traction": "WAM",
+    "solar_rooftop": "User Data"
+  },
+  "td_losses": [
+    {
+      "loss_percentage": 12,
+      "year": 2020
+    },
+    {
+      "loss_percentage": 8,
+      "year": 2030
+    },
+    {
+      "loss_percentage": 6,
+      "year": 2040
+    }
+  ],
+  "filters": {
+    "unit": "TWh",
+    "startYear": 2006,
+    "endYear": 2037,
+    "sectors": []
+  },
+  "generated_at": "2025-06-16T13:43:06.428176",
+  "csv_file": "consolidated_results.csv",
+  "total_records": 13
+}

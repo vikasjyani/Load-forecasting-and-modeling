@@ -1,0 +1,18 @@
+{
+    "job_id": "8ddd6985-efb4-4c86-baae-8054b8af2c5a",
+    "execution_start": "2025-06-15T21:20:18.873780",
+    "execution_end": "2025-06-15T21:20:30.595735",
+    "total_processing_time_seconds": 11.614450931549072,
+    "sectors_processed": 11,
+    "configuration_file": "forecast_config.json",
+    "summary_file": "forecast_summary.json",
+    "version_info": {
+        "platform_version": "1.0.0",
+        "forecasting_models": [
+            "MLR",
+            "SLR",
+            "WAM",
+            "TimeSeries"
+        ]
+    }
+}

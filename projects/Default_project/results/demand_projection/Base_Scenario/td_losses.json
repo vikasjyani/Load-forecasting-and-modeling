@@ -1,0 +1,18 @@
+{
+  "scenario_name": "Base_Scenario",
+  "td_losses": [
+    {
+      "year": 2020,
+      "loss_percentage": 12.0
+    },
+    {
+      "year": 2030,
+      "loss_percentage": 8.0
+    },
+    {
+      "year": 2040,
+      "loss_percentage": 6.0
+    }
+  ],
+  "saved_at": "2025-06-16T13:43:06.170593"
+}

@@ -1,0 +1,558 @@
+{
+    "scenario_info": {
+        "scenario_name": "Unknown",
+        "target_year": 2037,
+        "start_year": 2025,
+        "end_year": 2037,
+        "exclude_covid_years": true,
+        "created_timestamp": "2025-06-15 21:20:30",
+        "created_timestamp_iso": "2025-06-15T21:20:30.583491",
+        "forecast_period_years": 0,
+        "data_period_years": 13
+    },
+    "processing_results": {
+        "total_sectors": 11,
+        "successful_sectors": 11,
+        "sectors_forecasted": 8,
+        "sectors_using_existing_data": 3,
+        "sectors_with_errors": 0,
+        "success_rate": 1.0,
+        "processing_summary": {
+            "forecasted": [
+                "Agriculture",
+                "Domestic_lt",
+                "Commercial_lt",
+                "railway_traction",
+                "licencees",
+                "public_lighting",
+                "ht_eht",
+                "industrial_lt"
+            ],
+            "existing_data": [
+                "ev_transport",
+                "green_hydrogen",
+                "solar_rooftop"
+            ],
+            "failed": []
+        }
+    },
+    "model_statistics": {
+        "models_used": [
+            "MLR",
+            "SLR",
+            "WAM",
+            "TimeSeries"
+        ],
+        "model_usage_counts": {
+            "MLR": 11,
+            "SLR": 11,
+            "WAM": 11,
+            "TimeSeries": 11
+        },
+        "most_common_model": "MLR",
+        "advanced_configurations": 0,
+        "total_model_instances": 44
+    },
+    "configuration_summary": {
+        "scenario_name": "Base_Scenario",
+        "target_year": 2037,
+        "exclude_covid_years": true,
+        "total_sectors_configured": 11,
+        "configuration_complexity": "Standard"
+    },
+    "file_info": {
+        "results_directory": "C:\\Users\\Admin\\Desktop\\drive april 2025\\kerala kseb project backup 13-1-2025\\new\\gemini testing new version\\testing project\\Default_project\\results\\demand_projection\\Base_Scenario",
+        "scenario_folder": "Base_Scenario",
+        "project_relative_path": "results/demand_projection/Unknown",
+        "generated_files": [
+            "Agriculture.xlsx",
+            "Commercial_lt.xlsx",
+            "Domestic_lt.xlsx",
+            "ev_transport.xlsx",
+            "green_hydrogen.xlsx",
+            "ht_eht.xlsx",
+            "industrial_lt.xlsx",
+            "licencees.xlsx",
+            "public_lighting.xlsx",
+            "railway_traction.xlsx",
+            "solar_rooftop.xlsx"
+        ],
+        "file_count": 11
+    },
+    "sector_configurations": {
+        "Agriculture": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [
+                "GSDP",
+                "Per Capita GSDP",
+                "Agriculture_GVA"
+            ],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "Domestic_lt": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [
+                "GSDP",
+                "Per Capita GSDP"
+            ],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "Commercial_lt": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [
+                "GSDP",
+                "ht_eht_GVA",
+                "Per Capita GSDP"
+            ],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "railway_traction": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [
+                "GSDP",
+                "ht_eht_GVA"
+            ],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "ev_transport": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "existing_data",
+            "independent_variables": [],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "green_hydrogen": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "existing_data",
+            "independent_variables": [],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "solar_rooftop": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "existing_data",
+            "independent_variables": [],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "licencees": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "public_lighting": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [
+                "GSDP"
+            ],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "ht_eht": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [
+                "GSDP"
+            ],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        },
+        "industrial_lt": {
+            "models_selected": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "status": "forecasted",
+            "independent_variables": [
+                "GSDP"
+            ],
+            "window_size": 10,
+            "configuration_complexity": "Standard"
+        }
+    },
+    "quality_metrics": {
+        "data_completeness": 1.0,
+        "forecast_coverage": 0.7272727272727273,
+        "error_rate": 0.0,
+        "configuration_sophistication": 0.0
+    },
+    "detailed_results": {
+        "sector_performance": [
+            {
+                "sector_name": "Agriculture",
+                "status": "success",
+                "processing_time": 2.5482242107391357,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for Agriculture",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [
+                        "GSDP",
+                        "Per Capita GSDP",
+                        "Agriculture_GVA"
+                    ],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.262Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "Domestic_lt",
+                "status": "success",
+                "processing_time": 1.59126877784729,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for Domestic_lt",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [
+                        "GSDP",
+                        "Per Capita GSDP"
+                    ],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.240Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "Commercial_lt",
+                "status": "success",
+                "processing_time": 1.9301326274871826,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for Commercial_lt",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [
+                        "GSDP",
+                        "ht_eht_GVA",
+                        "Per Capita GSDP"
+                    ],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.275Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "railway_traction",
+                "status": "success",
+                "processing_time": 1.3331005573272705,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for railway_traction",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [
+                        "GSDP",
+                        "ht_eht_GVA"
+                    ],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.270Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "ev_transport",
+                "status": "existing_data",
+                "processing_time": 0.09221720695495605,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Used existing data for ev_transport (up to 2037)",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.286Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "green_hydrogen",
+                "status": "existing_data",
+                "processing_time": 0.10236406326293945,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Used existing data for green_hydrogen (up to 2037)",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.291Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "solar_rooftop",
+                "status": "existing_data",
+                "processing_time": 0.06807446479797363,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Used existing data for solar_rooftop (up to 2037)",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.302Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "licencees",
+                "status": "success",
+                "processing_time": 0.7630233764648438,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for licencees",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.303Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "public_lighting",
+                "status": "success",
+                "processing_time": 1.040877342224121,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for public_lighting",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [
+                        "GSDP"
+                    ],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.320Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "ht_eht",
+                "status": "success",
+                "processing_time": 0.9935929775238037,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for ht_eht",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [
+                        "GSDP"
+                    ],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.321Z",
+                    "configurationSource": "tracking"
+                }
+            },
+            {
+                "sector_name": "industrial_lt",
+                "status": "success",
+                "processing_time": 1.1515753269195557,
+                "models_used": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "message": "Forecast completed for industrial_lt",
+                "error": null,
+                "configuration_used": {
+                    "models": [
+                        "MLR",
+                        "SLR",
+                        "WAM",
+                        "TimeSeries"
+                    ],
+                    "independentVars": [
+                        "GSDP"
+                    ],
+                    "windowSize": 10,
+                    "lastUpdated": "2025-06-15T15:50:12.328Z",
+                    "configurationSource": "tracking"
+                }
+            }
+        ],
+        "performance_analysis": {
+            "total_processing_time": 11.614450931549072,
+            "average_processing_time": 1.0558591755953701,
+            "fastest_processing_time": 0.06807446479797363,
+            "slowest_processing_time": 2.5482242107391357,
+            "processing_efficiency": 1.0
+        },
+        "model_analysis": {
+            "model_usage_distribution": {
+                "MLR": 11,
+                "SLR": 11,
+                "WAM": 11,
+                "TimeSeries": 11
+            },
+            "most_used_model": "MLR",
+            "total_model_instances": 44
+        }
+    }
+}

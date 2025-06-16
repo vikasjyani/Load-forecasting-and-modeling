@@ -1,0 +1,698 @@
+{
+    "forecast_parameters": {
+        "scenario_name": "Base_Scenario",
+        "target_year": 2037,
+        "exclude_covid_years": true,
+        "request_timestamp": "2025-06-15T21:20:18.873374",
+        "created_timestamp": "2025-06-15T21:20:18.877930",
+        "created_by": "KSEB Energy Futures Platform"
+    },
+    "data_context": {
+        "input_file_path": "C:\\Users\\Admin\\Desktop\\drive april 2025\\kerala kseb project backup 13-1-2025\\new\\gemini testing new version\\testing project\\Default_project\\inputs\\input_demand_file.xlsx",
+        "data_start_year": 2025,
+        "data_end_year": 2037,
+        "available_sectors": [
+            "Agriculture",
+            "Domestic_lt",
+            "Commercial_lt",
+            "railway_traction",
+            "ev_transport",
+            "green_hydrogen",
+            "solar_rooftop",
+            "licencees",
+            "public_lighting",
+            "ht_eht",
+            "industrial_lt"
+        ],
+        "total_sectors_configured": 11,
+        "data_file_last_modified": "2025-06-02T16:23:36.597069"
+    },
+    "sector_configurations": {
+        "Agriculture": {
+            "sector_name": "Agriculture",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [
+                        "GSDP",
+                        "Per Capita GSDP",
+                        "Agriculture_GVA"
+                    ],
+                    "total_variables_selected": 3,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "Domestic_lt": {
+            "sector_name": "Domestic_lt",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [
+                        "GSDP",
+                        "Per Capita GSDP"
+                    ],
+                    "total_variables_selected": 2,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "Commercial_lt": {
+            "sector_name": "Commercial_lt",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [
+                        "GSDP",
+                        "ht_eht_GVA",
+                        "Per Capita GSDP"
+                    ],
+                    "total_variables_selected": 3,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "railway_traction": {
+            "sector_name": "railway_traction",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [
+                        "GSDP",
+                        "ht_eht_GVA"
+                    ],
+                    "total_variables_selected": 2,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "ev_transport": {
+            "sector_name": "ev_transport",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [],
+                    "total_variables_selected": 0,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2024,
+                "data_end_year": 2037,
+                "total_data_points": 14,
+                "forecast_needed": false,
+                "forecast_years_count": 0,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "green_hydrogen": {
+            "sector_name": "green_hydrogen",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [],
+                    "total_variables_selected": 0,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2024,
+                "data_end_year": 2037,
+                "total_data_points": 14,
+                "forecast_needed": false,
+                "forecast_years_count": 0,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "solar_rooftop": {
+            "sector_name": "solar_rooftop",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [],
+                    "total_variables_selected": 0,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2018,
+                "data_end_year": 2037,
+                "total_data_points": 20,
+                "forecast_needed": false,
+                "forecast_years_count": 0,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "licencees": {
+            "sector_name": "licencees",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [],
+                    "total_variables_selected": 0,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "public_lighting": {
+            "sector_name": "public_lighting",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [
+                        "GSDP"
+                    ],
+                    "total_variables_selected": 1,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "ht_eht": {
+            "sector_name": "ht_eht",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [
+                        "GSDP"
+                    ],
+                    "total_variables_selected": 1,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        },
+        "industrial_lt": {
+            "sector_name": "industrial_lt",
+            "selected_models": [
+                "MLR",
+                "SLR",
+                "WAM",
+                "TimeSeries"
+            ],
+            "model_configurations": {
+                "MLR": {
+                    "independent_variables": [
+                        "GSDP"
+                    ],
+                    "total_variables_selected": 1,
+                    "variable_selection_method": "user_selected",
+                    "correlation_threshold": 0.4
+                },
+                "WAM": {
+                    "window_size_years": 10,
+                    "weighting_method": "linear_increasing",
+                    "window_type": "preset"
+                },
+                "SLR": {
+                    "regression_type": "simple_linear",
+                    "predictor_variable": "Year",
+                    "method": "least_squares"
+                },
+                "TimeSeries": {
+                    "decomposition_method": "automatic",
+                    "forecasting_algorithm": "auto_select",
+                    "seasonality_detection": "enabled"
+                }
+            },
+            "data_analysis": {
+                "data_start_year": 2006,
+                "data_end_year": 2025,
+                "total_data_points": 20,
+                "forecast_needed": true,
+                "forecast_years_count": 12,
+                "data_quality_indicators": {
+                    "has_missing_values": "False",
+                    "data_completeness_percentage": 100.0
+                }
+            },
+            "advanced_settings": {}
+        }
+    },
+    "global_settings": {
+        "defaultModels": [
+            "MLR",
+            "SLR",
+            "WAM",
+            "TimeSeries"
+        ],
+        "configurationMethod": "ui",
+        "collectionTimestamp": "2025-06-15T15:50:18.861Z",
+        "userInterface": "web_application",
+        "configurationSource": "sector_specific_selections",
+        "totalSectorsAvailable": 11,
+        "totalSectorsConfigured": 11,
+        "sectorConfigurationSummary": [
+            {
+                "sector": "Agriculture",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": true,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "Domestic_lt",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": true,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "Commercial_lt",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": true,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "railway_traction",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": true,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "ev_transport",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": false,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "green_hydrogen",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": false,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "solar_rooftop",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": false,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "licencees",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": false,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "public_lighting",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": true,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "ht_eht",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": true,
+                "customWAMWindow": false
+            },
+            {
+                "sector": "industrial_lt",
+                "models": [
+                    "MLR",
+                    "SLR",
+                    "WAM",
+                    "TimeSeries"
+                ],
+                "hasMLRVars": true,
+                "customWAMWindow": false
+            }
+        ]
+    },
+    "user_metadata": {
+        "request_source": "web_ui",
+        "configuration_version": "2.0.0",
+        "ip_address": "127.0.0.1",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+        "request_timestamp": "2025-06-15T21:20:18.873349"
+    },
+    "platform_info": {
+        "version": "1.0.0",
+        "available_models": [
+            "MLR",
+            "SLR",
+            "WAM",
+            "TimeSeries"
+        ],
+        "validation_rules": {
+            "MIN_DATA_POINTS": 2,
+            "MIN_TRAINING_SIZE": 0.7,
+            "MIN_WINDOW_SIZE": 2,
+            "MAX_WINDOW_SIZE": 50,
+            "MAX_INDEPENDENT_VARS": 20,
+            "MIN_YEAR": 1990,
+            "MAX_YEAR": 2100
+        }
+    }
+}

@@ -1,0 +1,18 @@
+{
+  "scenario_name": "Base_Scenario",
+  "model_selection": {
+    "Agriculture": "WAM",
+    "Commercial_lt": "WAM",
+    "Domestic_lt": "WAM",
+    "ev_transport": "User Data",
+    "green_hydrogen": "User Data",
+    "ht_eht": "WAM",
+    "industrial_lt": "WAM",
+    "licencees": "WAM",
+    "public_lighting": "WAM",
+    "railway_traction": "WAM",
+    "solar_rooftop": "User Data"
+  },
+  "saved_at": "2025-06-16T13:43:06.162426",
+  "saved_by": "demand_visualization_service"
+}

@@ -1,0 +1,123 @@
+{
+  "profile_id": "load_profile_new_20250610_155600",
+  "method": "base_profile_scaling",
+  "generated_at": "2025-06-10T15:56:00.109199",
+  "start_fy": 2026,
+  "end_fy": 2037,
+  "output_format": {
+    "columns": [
+      "datetime",
+      "Demand (kW)",
+      "Date",
+      "Time",
+      "Fiscal_Year",
+      "Year",
+      "Hour"
+    ],
+    "demand_unit": "kW",
+    "timestamp_format": "datetime",
+    "total_hours": 105192
+  },
+  "summary_statistics": {
+    "total_records": 105192,
+    "date_range": {
+      "start": "2025-04-01T00:00:00",
+      "end": "2037-03-31T23:00:00"
+    },
+    "demand_stats_kW": {
+      "min": 2551027.44,
+      "max": 9514439.33,
+      "mean": 4771942.227994524,
+      "std": 1201184.2163063886
+    },
+    "fiscal_years": {
+      "start": 2026,
+      "end": 2037,
+      "count": 12
+    },
+    "load_factor": 0.501547391547088
+  },
+  "validation": {
+    "annual_totals": {
+      "FY2026.0": {
+        "target": 31171216663.37271,
+        "actual": 31171216662.76,
+        "difference_percent": 1.965636653597103e-09
+      },
+      "FY2027.0": {
+        "target": 32426587833.96818,
+        "actual": 32426587833.75,
+        "difference_percent": 6.72847884040601e-10
+      },
+      "FY2028.0": {
+        "target": 33833421958.18552,
+        "actual": 33833421959.97,
+        "difference_percent": 5.274314406593017e-09
+      },
+      "FY2029.0": {
+        "target": 35399148202.36114,
+        "actual": 35399148202.6,
+        "difference_percent": 6.7476506106563e-10
+      },
+      "FY2030.0": {
+        "target": 37131729303.07503,
+        "actual": 37131729304.59,
+        "difference_percent": 4.079984693696589e-09
+      },
+      "FY2031.0": {
+        "target": 39039700393.66266,
+        "actual": 39039700394.89,
+        "difference_percent": 3.143827144845155e-09
+      },
+      "FY2032.0": {
+        "target": 41494081304.24943,
+        "actual": 41494081303.5,
+        "difference_percent": 1.8061076950109678e-09
+      },
+      "FY2033.0": {
+        "target": 44129558025.09529,
+        "actual": 44129558025.36,
+        "difference_percent": 5.998461904053443e-10
+      },
+      "FY2034.0": {
+        "target": 46979591985.91016,
+        "actual": 46979591985.45,
+        "difference_percent": 9.794876505011385e-10
+      },
+      "FY2035.0": {
+        "target": 50055845747.7424,
+        "actual": 50055845748.34,
+        "difference_percent": 1.1938569929581152e-09
+      },
+      "FY2036.0": {
+        "target": 53370904195.8964,
+        "actual": 53370904195.83,
+        "difference_percent": 1.2440977271390137e-10
+      },
+      "FY2037.0": {
+        "target": 56938361230.91351,
+        "actual": 56938361230.16,
+        "difference_percent": 1.3233776055276993e-09
+      }
+    },
+    "monthly_validation": {},
+    "general_stats": {
+      "total_hours": 105192,
+      "peak_demand": 9514439.33,
+      "min_demand": 2551027.44,
+      "avg_demand": 4771942.227994524,
+      "overall_load_factor": 0.501547391547088
+    }
+  },
+  "file_info": {
+    "exists": true,
+    "path": "C:\\Users\\Admin\\Desktop\\drive april 2025\\kerala kseb project backup 13-1-2025\\new\\gemini testing new version\\testing project\\Default_project\\results\\load_profiles\\load_profile_new_20250610_155600.csv",
+    "size_bytes": 6783482,
+    "size_mb": 6.47,
+    "created": "2025-06-10T15:56:00.506811",
+    "modified": "2025-06-10T15:56:02.380699",
+    "is_file": true,
+    "is_directory": false,
+    "extension": ".csv"
+  }
+}
