@@ -476,8 +476,17 @@ class DemandVisualizationApp {
                 datasets: [{
                     label: `Total Demand (${data.unit})`,
                     data: sectorTotals,
-                    backgroundColor: sectors.map(sectorName => { const color = window.colorManager.getColor('sectors', sectorName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC'; return color + '80'; }),
-                    borderColor: sectors.map(sectorName => { return window.colorManager.getColor('sectors', sectorName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC'; }),
+                    backgroundColor: sectors.map(sectorName => {
+                        const color = window.colorManager?.getColor('sectors', sectorName) ||
+                                      window.colorManager?.getChartColors(1)[0] ||
+                                      '#CCCCCC'; // Fallback grey
+                        return color + '80'; // Apply alpha
+                    }),
+                    borderColor: sectors.map(sectorName => {
+                        return window.colorManager?.getColor('sectors', sectorName) ||
+                               window.colorManager?.getChartColors(1)[0] ||
+                               '#CCCCCC'; // Fallback grey
+                    }),
                     borderWidth: 2
                 }]
             },
@@ -644,13 +653,16 @@ class DemandVisualizationApp {
         }
         
         // Create datasets for each model - ALL MODELS AS LINE CHARTS
-        const datasets = sectorData.models.map((modelName, index) => {
-const color = window.colorManager.getColor('models', modelName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC';
+        const datasets = sectorData.models.map((model, index) => {
             return {
-                label: modelName,
-                data: sectorData[modelName] || [],
-                borderColor: color,
-                backgroundColor: color + '20',
+                label: model,
+                data: sectorData[model] || [],
+                borderColor: window.colorManager?.getColor('models', model) ||
+                             window.colorManager?.getChartColors(1)[0] ||
+                             this.generateRandomColor(index), // Existing fallback if others fail
+                backgroundColor: (window.colorManager?.getColor('models', model) ||
+                                  window.colorManager?.getChartColors(1)[0] ||
+                                  this.generateRandomColor(index)) + '20', // Apply alpha
                 borderWidth: 2,
                 pointRadius: 4,
                 pointHoverRadius: 6,
@@ -1039,13 +1051,12 @@ const color = window.colorManager.getColor('models', modelName) || window.colorM
         const datasets = [];
         
         // Add datasets for scenario 1 - solid lines
-        sector1Data.models.forEach((modelName, index) => {
-const color = window.colorManager.getColor('models', modelName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC';
+        sector1Data.models.forEach((model, index) => {
             datasets.push({
-                label: `${this.state.comparisonData.scenario1.name} - ${modelName}`,
-                data: sector1Data[modelName] || [],
-                borderColor: color,
-                backgroundColor: color + '20',
+                label: `${this.state.comparisonData.scenario1.name} - ${model}`,
+                data: sector1Data[model] || [],
+                borderColor: this.modelColors[model] || this.generateRandomColor(index),
+                backgroundColor: (this.modelColors[model] || this.generateRandomColor(index)) + '20',
                 borderWidth: 3,
                 pointRadius: 5,
                 pointHoverRadius: 7,
@@ -1056,13 +1067,16 @@ const color = window.colorManager.getColor('models', modelName) || window.colorM
         });
         
         // Add datasets for scenario 2 - dashed lines
-        sector2Data.models.forEach((modelName, index) => {
-const color = window.colorManager.getColor('models', modelName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC';
+        sector2Data.models.forEach((model, index) => {
             datasets.push({
-                label: `${this.state.comparisonData.scenario2.name} - ${modelName}`,
-                data: sector2Data[modelName] || [],
-                borderColor: color,
-                backgroundColor: color + '10',
+                label: `${this.state.comparisonData.scenario2.name} - ${model}`,
+                data: sector2Data[model] || [],
+                borderColor: window.colorManager?.getColor('models', model) ||
+                             window.colorManager?.getChartColors(1)[0] ||
+                             this.generateRandomColor(index),
+                backgroundColor: (window.colorManager?.getColor('models', model) ||
+                                  window.colorManager?.getChartColors(1)[0] ||
+                                  this.generateRandomColor(index)) + '10', // Corrected alpha to '10'
                 borderWidth: 3,
                 pointRadius: 4,
                 pointHoverRadius: 6,
@@ -1184,7 +1198,7 @@ const color = window.colorManager.getColor('models', modelName) || window.colorM
     }
     
     // Configuration Modal Functions
-    async showConfigurationModal() { // Made async
+    showConfigurationModal() {
         if (!this.state.currentData) {
             this.showNotification('warning', 'Please load scenario data first');
             return;
@@ -1247,61 +1261,6 @@ const color = window.colorManager.getColor('models', modelName) || window.colorM
         this.loadExistingTdLosses();
     }
     
-async populateColorConfiguration() {
-
-        if (!window.colorManager) {
-            console.warn('ColorManager not available for populating color configurations.');
-            return;
-        }
-
-        // Populate Sector Colors
-        const sectorColorsContainer = document.getElementById('sectorColorsConfigContent');
-        if (sectorColorsContainer) {
-            sectorColorsContainer.innerHTML = ''; // Clear previous
-            try {
-                const currentSectorColors = await window.colorManager.getCategoryColors('sectors') || {};
-                const sectors = Object.keys(this.state.currentData.sectors);
-
-                sectors.forEach(sector => {
-                    const initialColor = currentSectorColors[sector] || window.colorManager.getColor('sectors', sector); // getColor will generate if not in current/cache
-                    const itemHtml = `
-                        <div class="color-config-item">
-                            <label for="color-sector-${sector}" title="${sector}">${sector}</label>
-                            <input type="color" id="color-sector-${sector}" data-category="sectors" data-item="${sector}" value="${initialColor}">
-                        </div>
-                    `;
-                    sectorColorsContainer.insertAdjacentHTML('beforeend', itemHtml);
-                });
-            } catch (error) {
-                console.error("Error populating sector colors:", error);
-                sectorColorsContainer.innerHTML = '<p class="text-danger">Error loading sector colors.</p>';
-            }
-        }
-
-        // Populate Model Colors
-        const modelColorsContainer = document.getElementById('modelColorsConfigContent');
-        if (modelColorsContainer) {
-            modelColorsContainer.innerHTML = ''; // Clear previous
-            try {
-                const currentModelColors = await window.colorManager.getCategoryColors('models') || {};
-                const models = this.state.currentData.available_models || [];
-
-                models.forEach(model => {
-                    const initialColor = currentModelColors[model] || window.colorManager.getColor('models', model); // getColor will generate
-                    const itemHtml = `
-                        <div class="color-config-item">
-                            <label for="color-model-${model}" title="${model}">${model}</label>
-                            <input type="color" id="color-model-${model}" data-category="models" data-item="${model}" value="${initialColor}">
-                        </div>
-                    `;
-                    modelColorsContainer.insertAdjacentHTML('beforeend', itemHtml);
-                });
-            } catch (error) {
-                console.error("Error populating model colors:", error);
-                modelColorsContainer.innerHTML = '<p class="text-danger">Error loading model colors.</p>';
-            }
-        }
-    }
     async loadExistingTdLosses() {
         try {
             const response = await fetch(`${this.API_BASE}/td-losses/${this.state.currentScenario}`);
@@ -1322,27 +1281,6 @@ async populateColorConfiguration() {
         } catch (error) {
             console.error('Error loading existing T&D losses:', error);
             this.state.tdLosses = [
-                { year: 2025, loss_percentage: 12.0 },
-                { year: 2030, loss_percentage: 8.0 },
-                { year: 2037, loss_percentage: 6.0 }
-            ];
-            this.updateTdLossesDisplay();
-        }
-    }
-    
-    updateTdLossesDisplay() {
-        const container = document.getElementById('tdLossesContent');
-        if (!container) return;
-        
-        let html = '';
-        this.state.tdLosses.forEach((loss, index) => {
-            html += `
-                <div class="td-losses-item">
-                    <input type="number" class="form-control" placeholder="Year" 
-                           value="${loss.year}" data-index="${index}" data-field="year"
-                           min="${this.state.filters.startYear || 2000}" max="${this.state.filters.endYear || 2100}">
-                    <input type="number" class="form-control" placeholder="Loss %" 
-                           value="${loss.loss_percentage}" data-index="${index}" data-field="loss_percentage"
                            min="0" max="100" step="0.1">
                     <button class="btn btn-sm btn-outline-danger" onclick="demandVizApp.removeTdLossEntry(${index})">
                         <i class="fas fa-trash"></i>
@@ -1382,16 +1320,8 @@ async populateColorConfiguration() {
         }
     }
     
-    async async saveConfiguration() {
+    async saveConfiguration() {
         try {
-            const colorSavePromises = [];
-            document.querySelectorAll('#sectorColorsConfigContent input[type="color"], #modelColorsConfigContent input[type="color"]').forEach(input => {
-                const category = input.dataset.category;
-                const item = input.dataset.item;
-                const newColor = input.value;
-                colorSavePromises.push(window.colorManager.setColor(category, item, newColor));
-            });
-
             // Collect model selection
             const modelSelection = {};
             let hasAllModels = true;
@@ -1458,12 +1388,6 @@ async populateColorConfiguration() {
             
             const consolidatedResult = await consolidatedResponse.json();
             if (consolidatedResult.success) {
-                if (modelResult.success && tdResult.success) {
-                    await Promise.all(colorSavePromises);
-                    this.showNotification('success', 'Color configurations saved successfully.');
-                    /* Optionally, reload colors if colorManager doesn't update its cache automatically */
-                    /* await window.colorManager.loadColors(); */
-                }
                 this.state.consolidatedData = consolidatedResult.data;
             }
             
@@ -1601,11 +1525,29 @@ async populateColorConfiguration() {
         );
         
         // Create datasets for sectors
-        const datasets = sectorColumns.map((sectorName, index) => { const color = window.colorManager.getColor('sectors', sectorName) || window.colorManager.getChartColors(1)[0] || '#CCCCCC'; return {
-            label: sectorName,
-            data: data.map(row => row[sectorName] || 0),
-            backgroundColor: color + (chartType === 'area' ? '60' : '80'),
-            borderColor: color,
+        const datasets = sectorColumns.map((sectorName, index) => {
+            const sectorColor = window.colorManager?.getColor('sectors', sectorName) ||
+                                window.colorManager?.getChartColors(1)[0] ||
+                                '#A9A9A9'; // Fallback dark grey
+            return {
+                label: sectorName,
+                data: data.map(row => row[sectorName] || 0),
+                backgroundColor: sectorColor + (chartType === 'area' ? '60' : '80'), // Apply alpha
+                borderColor: sectorColor,
+                borderWidth: 2,
+                fill: chartType === 'area',
+            };
+        }));
+
+        // Add T&D losses dataset
+        const tdLossesColor = window.colorManager?.getColor('status', 'error') ||
+                              window.colorManager?.getColor('charts', 'tertiary') ||
+                              '#FF0000'; // Fallback red
+        datasets.push({
+            label: 'T&D Losses',
+            data: data.map(row => row.TD_Losses || 0),
+            backgroundColor: tdLossesColor + (chartType === 'area' ? '60' : '80'), // Apply alpha
+            borderColor: tdLossesColor,
             borderWidth: 2,
             fill: chartType === 'area',
             tension: 0.1
@@ -1615,8 +1557,8 @@ async populateColorConfiguration() {
         datasets.push({
             label: 'T&D Losses',
             data: data.map(row => row.TD_Losses || 0),
-            backgroundColor: tdLossesColor + (chartType === 'area' ? '60' : '80'),
-            borderColor: tdLossesColor,
+            backgroundColor: '#ef444460',
+            borderColor: '#ef4444',
             borderWidth: 2,
             fill: chartType === 'area',
             tension: 0.1
@@ -1760,9 +1702,35 @@ async populateColorConfiguration() {
     }
     
     // Utility Functions
+    generateSectorColors() {
+        const colors = [
+            '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+            '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#6366f1',
+            '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'
+        ];
+        return colors;
+    }
     
+    getSectorColor(sector) {
+        const hash = this.hashCode(sector);
+        const index = Math.abs(hash) % this.sectorColors.length;
+        return this.sectorColors[index];
+    }
     
+    hashCode(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        return hash;
+    }
     
+    generateRandomColor(index) {
+        const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
+        return colors[index % colors.length];
+    }
     
     getCommonYears(years1, years2) {
         return years1.filter(year => years2.includes(year));

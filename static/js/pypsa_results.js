@@ -892,7 +892,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (yValues.some(v => Math.abs(v) > 1e-6)) { 
                     traces.push({
                         x: xValues, y: yValues, name: carrier, stackgroup: 'positive_generation',
-                        fillcolor: window.colorManager.getColor('carriers', carrier) || window.colorManager.getChartColors(1)[0] || '#CFD8DC',
+                        fillcolor: state.colorPalette[carrier] || getRandomColor(),
                         line: { width: 0 }, fill: 'tonexty',
                         hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>${carrier}: %{y:,.1f} MW<extra></extra>`
                     });
@@ -919,7 +919,7 @@ document.addEventListener('DOMContentLoaded', function() {
                  if (yValues.some(v => v > 1e-6)) {
                     traces.push({
                         x: xValues, y: yValues, name: col, stackgroup: 'positive_storage', 
-                        fillcolor: window.colorManager.getColor('carriers', col.replace(' Discharge', '')) || window.colorManager.getColor('storage', col.replace(' Discharge', '')) || window.colorManager.getChartColors(1)[0] || '#CFD8DC',
+                        fillcolor: state.colorPalette[col.replace(' Discharge', '')] || state.colorPalette[col] || getRandomColor(),
                         line: { width: 0 }, fill: 'tonexty',
                         hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>${col}: %{y:,.1f} MW<extra></extra>`
                     });
@@ -930,7 +930,7 @@ document.addEventListener('DOMContentLoaded', function() {
                  if (yValues.some(v => v < -1e-6)) { 
                     traces.push({
                         x: xValues, y: yValues, name: col, stackgroup: 'negative_storage', 
-                        fillcolor: window.colorManager.getColor('carriers', col.replace(' Charge', '')) || window.colorManager.getColor('storage', col.replace(' Charge', '')) || window.colorManager.getChartColors(1)[0] || '#CFD8DC',
+                        fillcolor: state.colorPalette[col.replace(' Charge', '')] || state.colorPalette[col] || getRandomColor(),
                         line: { width: 0 }, fill: 'tonexty', 
                         hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>${col}: %{y:,.1f} MW<extra></extra>`
                     });
@@ -942,7 +942,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const loadValues = load.map(item => item.load);
             traces.push({
                 x: xValues, y: loadValues, name: 'Load', mode: 'lines',
-                line: { color: window.colorManager.getColor('text', 'dark') || window.colorManager.getColor('charts', 'axis') || 'black', width: 2.5 },
+                line: { color: state.colorPalette['Load'] || 'black', width: 2.5 },
                 hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>Load: %{y:,.1f} MW<extra></extra>`
             });
         }
@@ -1015,14 +1015,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (isLoad) {
                      traces.push({
                         x: xHours, y: yValues, name: 'Load', mode: 'lines',
-                        line: { color: window.colorManager.getColor('text', 'dark') || window.colorManager.getColor('charts', 'axis') || 'black', width: 2.5 },
+                        line: { color: state.colorPalette['Load'] || 'black', width: 2.5 },
                         hovertemplate: `Hour %{x}<br>Avg Load: %{y:,.1f} MW<extra></extra>`
                     });
                 } else {
                     traces.push({
                         x: xHours, y: yValues, name: compName, 
                         stackgroup: isCharge ? 'negative_components_daily' : 'positive_components_daily', 
-                        fillcolor: window.colorManager.getColor('carriers', compName.replace(' Charge','').replace(' Discharge','')) || window.colorManager.getColor('storage', compName.replace(' Charge','').replace(' Discharge','')) || window.colorManager.getChartColors(1)[0] || '#CFD8DC',
+                        fillcolor: state.colorPalette[compName.replace(' Charge','').replace(' Discharge','')] || state.colorPalette[compName] || getRandomColor(),
                         line: { width: 0 }, fill: 'tonexty',
                         hovertemplate: `Hour %{x}<br>Avg ${compName}: %{y:,.1f} MW<extra></extra>`
                     });
@@ -1060,7 +1060,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
         const trace = {
             x: xValues, y: loadValues, type: 'scatter', fill: 'tozeroy',
-            fillcolor: (window.colorManager.getColor('charts', 'primary') || '#007bff') + '33', line: { color: window.colorManager.getColor('charts', 'primary') || '#007bff' },
+            fillcolor: 'rgba(0,128,255,0.2)', line: { color: 'rgba(0,128,255,0.8)' },
             hovertemplate: 'Duration: %{x:.1f}%<br>Load: %{y:,.1f} MW<extra></extra>'
         };
         const layout = {
@@ -1165,7 +1165,7 @@ document.addEventListener('DOMContentLoaded', function() {
             x: capacityData.map(item => item.Carrier),
             y: capacityData.map(item => item.Capacity),
             type: 'bar',
-            marker: { color: capacityData.map(item => window.colorManager.getColor('carriers', item.Carrier) || window.colorManager.getChartColors(1)[0] || '#CFD8DC') },
+            marker: { color: capacityData.map(item => state.colorPalette[item.Carrier] || getRandomColor()) },
             hovertemplate: `%{x}<br>Capacity: %{y:,.1f} ${unit}<extra></extra>`
         };
         const layout = {
@@ -1197,7 +1197,7 @@ document.addEventListener('DOMContentLoaded', function() {
             x: capacityData.map(item => item.Region),
             y: capacityData.map(item => item.Capacity),
             type: 'bar',
-            marker: { color: window.colorManager.getColor('charts', 'primary') || 'rgb(158,202,225)', line: { color: window.colorManager.getColor('charts', 'axis') || 'rgb(8,48,107)', width: 1.5 } },
+            marker: { color: 'rgb(158,202,225)', line: { color: 'rgb(8,48,107)', width: 1.5 } },
             hovertemplate: `%{x}<br>Capacity: %{y:,.1f} ${unit}<extra></extra>`
         };
         const layout = {
@@ -1261,7 +1261,7 @@ document.addEventListener('DOMContentLoaded', function() {
             x: additionsData.map(item => item.Carrier),
             y: additionsData.map(item => item.New_Capacity),
             type: 'bar',
-            marker: { color: additionsData.map(item => window.colorManager.getColor('carriers', item.Carrier) || window.colorManager.getChartColors(1)[0] || '#CFD8DC') },
+            marker: { color: additionsData.map(item => state.colorPalette[item.Carrier] || getRandomColor()) },
             hovertemplate: `%{x}<br>New Capacity: %{y:,.1f} ${unit}<extra></extra>`
         };
         const layout = {
@@ -1321,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', function() {
             x: cufData.map(item => item.Carrier),
             y: cufData.map(item => item.CUF * 100), 
             type: 'bar',
-            marker: { color: cufData.map(item => window.colorManager.getColor('carriers', item.Carrier) || window.colorManager.getChartColors(1)[0] || '#CFD8DC') },
+            marker: { color: cufData.map(item => state.colorPalette[item.Carrier] || getRandomColor()) },
             hovertemplate: `%{x}<br>CUF: %{y:.1f}%<extra></extra>`
         };
         const layout = {
@@ -1361,7 +1361,7 @@ document.addEventListener('DOMContentLoaded', function() {
             x: curtailmentData.map(item => item.Carrier),
             y: curtailmentData.map(item => item['Curtailment (%)']),
             type: 'bar',
-            marker: { color: curtailmentData.map(item => window.colorManager.getColor('carriers', item.Carrier) || window.colorManager.getChartColors(1)[0] || '#CFD8DC') },
+            marker: { color: curtailmentData.map(item => state.colorPalette[item.Carrier] || getRandomColor()) },
             hovertemplate: `%{x}<br>Curtailment: %{y:.1f}%<extra></extra>`
         };
         const layout = {
@@ -1412,7 +1412,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const baseColorKey = type.includes('(') ? type.substring(0, type.indexOf('(')).trim() : type;
                 traces.push({
                     x: timestamps, y: yValues, name: type, mode: 'lines',
-                    line: { color: window.colorManager.getColor('carriers', baseColorKey) || window.colorManager.getColor('storage', baseColorKey) || window.colorManager.getColor('carriers', type) || window.colorManager.getChartColors(1)[0] || '#CFD8DC', width: 2 },
+                    line: { color: state.colorPalette[baseColorKey] || state.colorPalette[type] || getRandomColor(), width: 2 },
                     hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>${type} SoC: %{y:,.1f} MWh<extra></extra>`
                 });
             }
@@ -1440,13 +1440,13 @@ document.addEventListener('DOMContentLoaded', function() {
             x: storageStats.map(item => item.Storage_Type),
             y: storageStats.map(item => item.Charge_MWh),
             name: 'Charge (MWh)', type: 'bar', 
-            marker: { color: window.colorManager.getColor('status', 'warning') || 'rgba(255,165,0,0.8)' }
+            marker: { color: state.colorPalette['Storage Charge'] || state.colorPalette['Store Charge'] || 'rgba(255,165,0,0.8)' }
         };
         const trace2 = {
             x: storageStats.map(item => item.Storage_Type),
             y: storageStats.map(item => item.Discharge_MWh),
             name: 'Discharge (MWh)', type: 'bar', 
-            marker: { color: window.colorManager.getColor('status', 'success') || 'rgba(50,205,50,0.8)' }
+            marker: { color: state.colorPalette['Storage Discharge'] || state.colorPalette['Store Discharge'] || 'rgba(50,205,50,0.8)' }
         };
         const layout = {
             title: 'Storage Energy Throughput',
@@ -1509,7 +1509,7 @@ document.addEventListener('DOMContentLoaded', function() {
             x: emissionsData.map(item => item.Carrier),
             y: emissionsData.map(item => item['Emissions (Tonnes)']),
             type: 'bar',
-            marker: { color: emissionsData.map(item => window.colorManager.getColor('carriers', item.Carrier) || window.colorManager.getChartColors(1)[0] || '#CFD8DC') },
+            marker: { color: emissionsData.map(item => state.colorPalette[item.Carrier] || getRandomColor()) },
             hovertemplate: `%{x}<br>Emissions: %{y:,.0f} tonnes CO₂<extra></extra>`
         };
         const layout = {
@@ -1566,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const unit = state.pricesData.unit || 'currency/MWh';
         const trace = {
             x: priceData.map(item => item.bus), y: priceData.map(item => item.price),
-            type: 'bar', marker: { color: window.colorManager.getColor('charts', 'primary') || 'rgba(158,202,225,0.8)', line: { color: window.colorManager.getColor('charts', 'axis') || 'rgb(8,48,107)', width: 1.5 } },
+            type: 'bar', marker: { color: 'rgba(158,202,225,0.8)', line: { color: 'rgb(8,48,107)', width: 1.5 } },
             hovertemplate: `%{x}<br>Price: %{y:,.2f} ${unit}<extra></extra>`
         };
         const layout = {
@@ -1590,7 +1590,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const xValues = durationCurve.map((_, i) => (i / (durationCurve.length -1 + 1e-9)) * 100);
         const trace = {
             x: xValues, y: durationCurve, type: 'scatter', fill: 'tozeroy',
-            fillcolor: (window.colorManager.getColor('charts', 'secondary') || '#FF0000') + '33', line: { color: window.colorManager.getColor('charts', 'secondary') || '#FF0000' },
+            fillcolor: 'rgba(255,0,0,0.2)', line: { color: 'red' },
             hovertemplate: `Duration: %{x:.1f}%<br>Price: %{y:,.2f} ${unit}<extra></extra>`
         };
         const layout = {
@@ -1654,130 +1654,478 @@ document.addEventListener('DOMContentLoaded', function() {
             type: 'bar',
             marker: {
                 color: lineLoadingData.map(item => {
-                    if (item.loading > 90) return window.colorManager.getColor('status', 'error') || 'rgba(220,53,69,0.8)';
-                    if (item.loading > 70) return window.colorManager.getColor('status', 'warning') || 'rgba(255,193,7,0.8)';
-                    return window.colorManager.getColor('status', 'success') || 'rgba(25,135,84,0.8)';
-// PyPSA Color Settings Modal Functions
-    async function showPypsaColorModal() {
-        if (!window.colorManager) {
-            console.warn('ColorManager not available for PyPSA color configurations.');
-            showGlobalAlert('Color management system is not initialized.', 'danger');
+                    if (item.loading > 90) return 'rgba(220,53,69,0.8)';
+                    if (item.loading > 70) return 'rgba(255,193,7,0.8)';
+                    return 'rgba(25,135,84,0.8)';
+                })
+            },
+            hovertemplate: `%{x}<br>Loading: %{y:.1f}%<extra></extra>`
+        };
+        const layout = {
+            title: 'Line Loading (Top 20)',
+            xaxis: { title: 'Line', tickangle: -45, automargin: true }, yaxis: { title: 'Loading (%)' },
+            height: 350, margin: { l: 70, r: 30, t: 50, b: 120 }
+        };
+        if (typeof Plotly !== 'undefined') Plotly.newPlot(plotContainerId, [trace], layout, { responsive: true });
+    }
+
+    function updateLineLoadingTable() {
+        const tbody = document.getElementById('lineLoadingTable').querySelector('tbody');
+        tbody.innerHTML = '';
+        if (!state.networkFlowData || !state.networkFlowData.line_loading || state.networkFlowData.line_loading.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center">No line loading data.</td></tr>';
             return;
         }
-        if (!state.currentNetworkPath) {
-            showGlobalAlert('Please load a PyPSA network first to configure its colors.', 'warning');
-            return;
+        const lineLoadingData = [...state.networkFlowData.line_loading].sort((a, b) => b.loading - a.loading);
+        lineLoadingData.forEach(item => {
+            const row = tbody.insertRow();
+            let loadingClass = '';
+            if (item.loading > 90) loadingClass = 'table-danger';
+            else if (item.loading > 70) loadingClass = 'table-warning';
+            if (loadingClass) row.classList.add(loadingClass);
+
+            row.insertCell().textContent = item.line;
+            row.insertCell().textContent = (item.loading || 0).toLocaleString(undefined, { maximumFractionDigits: 1 }) + '%';
+            row.cells[1].className = 'text-end';
+        });
+    }
+
+    // =====================
+    // Comparison Functions
+    // =====================
+
+    function initializeComparison() {
+        const comparisonBtn = document.createElement('button');
+        comparisonBtn.className = 'btn btn-sm btn-outline-primary ms-3';
+        comparisonBtn.innerHTML = '<i class="fas fa-chart-bar me-1"></i> Network Comparison';
+        comparisonBtn.id = 'networkComparisonToggleBtn';
+        comparisonBtn.addEventListener('click', function() {
+            analysisDashboard.style.display = 'none';
+            document.getElementById('networkSelectionSection').style.display = 'none';
+            document.getElementById('networkComparisonSection').style.display = 'block';
+            loadNetworksForComparison();
+        });
+        const controlsContainer = document.querySelector('.analysis-controls');
+        if (controlsContainer) {
+            controlsContainer.prepend(comparisonBtn);
         }
 
-        const carrierColorsContainer = document.getElementById('carrierColorsConfigContent');
-        const techColorsContainer = document.getElementById('technologyColorsConfigContent'); // Optional for now
 
-        carrierColorsContainer.innerHTML = '<div class="loading-indicator" style="display: flex;"><i class="fas fa-spinner fa-spin"></i> Loading colors...</div>';
-        if (techColorsContainer) techColorsContainer.innerHTML = '<p class="text-muted">Technology-specific colors can be configured here if applicable.</p>';
-
-
-        try {
-            // Fetch current carrier colors from manager
-            const currentCarrierColors = await window.colorManager.getCategoryColors('carriers') || {};
-
-            // Determine unique carriers from network info or existing palette
-            let uniqueCarriers = new Set();
-            if (state.networkInfo && state.networkInfo.carriers && state.networkInfo.carriers.length > 0) {
-                state.networkInfo.carriers.forEach(c => uniqueCarriers.add(c));
+        document.getElementById('backToDashboardBtn').addEventListener('click', function() {
+            document.getElementById('networkComparisonSection').style.display = 'none';
+            if (state.currentNetworkPath) {
+                 analysisDashboard.style.display = 'block';
+            } else {
+                 document.getElementById('networkSelectionSection').style.display = 'block';
             }
-            // Add carriers from the state.colorPalette as it might contain dynamically added ones from plots
-            Object.keys(state.colorPalette).forEach(c => {
-                // Heuristic: if a key doesn't include "Charge" or "Discharge" and is not a known special key, it might be a carrier
-                if (!c.includes("Charge") && !c.includes("Discharge") && !['Load', 'Losses', 'Curtailment'].includes(c)) {
-                     uniqueCarriers.add(c);
+        });
+        document.getElementById('runComparisonBtn').addEventListener('click', runComparison);
+    }
+
+    function loadNetworksForComparison() {
+        const container = document.getElementById('networkSelectContainer');
+        container.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i> Loading networks...</div>';
+
+        if (state.allNcFiles.length === 0) {
+            container.innerHTML = '<div class="alert alert-info">No networks found. Please upload network files first or ensure they are scanned.</div>';
+            return;
+        }
+        container.innerHTML = '';
+
+        state.allNcFiles.forEach((network, index) => {
+            const div = document.createElement('div');
+            div.className = 'network-checkbox form-check mb-2';
+            const isChecked = network.path === state.currentNetworkPath && state.currentNetworkPath !== null;
+            if (isChecked) div.classList.add('selected');
+
+            div.innerHTML = `
+                <input class="form-check-input network-checkbox-input" type="checkbox" value="${network.path}" id="compNet-${index}" data-filename="${network.filename}" data-scenario="${network.scenario}" ${isChecked ? 'checked' : ''}>
+                <label class="form-check-label" for="compNet-${index}">
+                    <strong>${network.scenario}</strong> / ${network.filename}
+                </label>
+            `;
+            div.addEventListener('click', function(e) {
+                const checkbox = this.querySelector('input[type="checkbox"]');
+                if (e.target !== checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+                this.classList.toggle('selected', checkbox.checked);
+            });
+            container.appendChild(div);
+        });
+    }
+
+    function runComparison() {
+        const selectedCheckboxes = Array.from(document.querySelectorAll('#networkSelectContainer .network-checkbox-input:checked'));
+        const selectedNetworkPaths = selectedCheckboxes.map(cb => cb.value);
+
+        if (selectedNetworkPaths.length < 1) {
+            showGlobalAlert('Please select at least one network for comparison.', 'warning');
+            return;
+        }
+
+        const labels = {};
+        selectedCheckboxes.forEach(cb => {
+            labels[cb.value] = `${cb.dataset.scenario} / ${cb.dataset.filename}`;
+        });
+
+        const comparisonType = document.getElementById('comparisonTypeSelect').value;
+        const resultsContainer = document.getElementById('comparisonResults');
+        const mainPlotContainer = document.getElementById('comparisonMainPlot');
+        const secondaryPlotContainer = document.getElementById('comparisonSecondaryPlot');
+        const secondaryRow = document.getElementById('comparisonSecondaryRow');
+
+        resultsContainer.style.display = 'block';
+        mainPlotContainer.innerHTML = '<div class="loading-indicator" style="display: flex;"><i class="fas fa-spinner fa-spin"></i> Generating comparison...</div>';
+        secondaryPlotContainer.innerHTML = '';
+        secondaryRow.style.display = 'none';
+        downloadComparisonSecondaryBtn.style.display = 'none';
+
+
+        fetch('/pypsa/api/compare_networks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_paths: selectedNetworkPaths,
+                labels: labels,
+                comparison_type: comparisonType,
+                attribute: comparisonType === 'capacity' ? document.getElementById('capacityAttributeSelect').value : undefined,
+                new_capacity_method: comparisonType === 'new_capacity_additions' ? document.getElementById('newCapacityMethodSelect').value : undefined
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success') {
+                renderComparisonPlot(result.comparison_data, mainPlotContainer, secondaryPlotContainer, secondaryRow);
+            } else {
+                mainPlotContainer.innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+            }
+        })
+        .catch(error => {
+            mainPlotContainer.innerHTML = `<div class="alert alert-danger">Error running comparison: ${error.message}</div>`;
+        });
+    }
+
+
+    function renderComparisonPlot(comparisonResult, mainPlotContainer, secondaryPlotContainer, secondaryRow) {
+        mainPlotContainer.innerHTML = '';
+        secondaryPlotContainer.innerHTML = '';
+        secondaryRow.style.display = 'none';
+        downloadComparisonSecondaryBtn.style.display = 'none';
+
+        const { type, data, colors, unit, label_name } = comparisonResult;
+        const methodForTitle = comparisonResult.method || (type === 'new_capacity_additions' ? newCapacityMethodSelect.options[newCapacityMethodSelect.selectedIndex].text : '');
+        document.getElementById('comparisonResultsTitle').textContent = `Comparison: ${type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')}`;
+
+        const effectiveColors = colors || state.colorPalette || {};
+
+        if (type === 'capacity' || type === 'generation' || type === 'new_capacity_additions') {
+            const plotDataForChart = []; // [{label_name: 'NetA', Carrier: 'Solar', Value: 100}, ...]
+            const uniqueCarriers = new Set();
+            const uniqueNetworkLabels = new Set();
+
+            Object.entries(data).forEach(([networkLabel, items]) => {
+                if (items.error) {
+                    console.warn(`Skipping errored network ${networkLabel} in comparison plot: ${items.error}`);
+                    return;
+                }
+                uniqueNetworkLabels.add(networkLabel);
+                if (Array.isArray(items)) {
+                    items.forEach(item => {
+                        const carrier = item.Carrier || item.index;
+                        uniqueCarriers.add(carrier);
+                        plotDataForChart.push({
+                            [label_name]: networkLabel,
+                            Carrier: carrier,
+                            Value: item.Capacity || item.Generation || item.New_Capacity
+                        });
+                    });
                 }
             });
 
+            if (plotDataForChart.length === 0) {
+                mainPlotContainer.innerHTML = '<div class="alert alert-info m-3">No data to display for this comparison.</div>';
+                return;
+            }
 
-            if (uniqueCarriers.size === 0) {
-                carrierColorsContainer.innerHTML = '<p class="text-muted">No carriers identified in the current network or existing palette. Load a network and its data first.</p>';
-            } else {
-                carrierColorsContainer.innerHTML = ''; // Clear loading/previous
-                Array.from(uniqueCarriers).sort().forEach(carrier => {
-                    // Ensure colorManager has a color for this carrier (it will generate if not present)
-                    const initialColor = currentCarrierColors[carrier] || window.colorManager.getColor('carriers', carrier);
-                    const itemHtml = `
-                        <div class="color-config-item">
-                            <label for="color-pypsa-carrier-${carrier}" title="${carrier}">${carrier}</label>
-                            <input type="color" id="color-pypsa-carrier-${carrier}" data-category="carriers" data-item="${carrier}" value="${initialColor}">
-                        </div>
-                    `;
-                    carrierColorsContainer.insertAdjacentHTML('beforeend', itemHtml);
+            const traces = [];
+            Array.from(uniqueCarriers).forEach(carrier => {
+                const xValues = [];
+                const yValues = [];
+                Array.from(uniqueNetworkLabels).forEach(netLabel => {
+                    const item = plotDataForChart.find(d => d[label_name] === netLabel && d.Carrier === carrier);
+                    xValues.push(netLabel); // Keep pushing label even if no data, for consistent x-axis
+                    yValues.push(item ? item.Value : 0); // Use 0 if no data for this carrier in this network
+                });
+
+                traces.push({
+                    x: xValues,
+                    y: yValues,
+                    name: carrier,
+                    type: 'bar',
+                    marker: {
+                        color: effectiveColors[carrier] || getRandomColor()
+                    }
+                });
+            });
+
+            let yAxisTitle = '';
+            let plotTitle = '';
+            if (type === 'capacity') {
+                yAxisTitle = `Capacity (${unit || 'MW/MWh'})`;
+                plotTitle = `Installed Capacity Comparison`;
+            } else if (type === 'generation') {
+                yAxisTitle = `Generation (${unit || 'MWh'})`;
+                plotTitle = `Total Generation Comparison`;
+            } else if (type === 'new_capacity_additions') {
+                yAxisTitle = `New Capacity (${unit || 'MW/MWh'})`;
+                plotTitle = `New Capacity Additions Comparison <br><span style="font-size:0.8em; color:grey;">(Method: ${methodForTitle})</span>`;
+            }
+
+            const layout = {
+                title: plotTitle,
+                xaxis: { title: label_name, automargin: true },
+                yaxis: { title: yAxisTitle },
+                barmode: 'stack', // or 'group' if preferred
+                legend: { traceorder: 'reversed', orientation: 'h', y: -0.3, yanchor: 'bottom', x:0.5, xanchor:'center'},
+                height: 500,
+                margin: { b: 150 }
+            };
+            if (typeof Plotly !== 'undefined') Plotly.newPlot(mainPlotContainer, traces, layout, { responsive: true });
+
+        } else if (type === 'metrics') {
+            // CUF Plot
+            const cufPlotData = [];
+            const cufUniqueCarriers = new Set();
+            const cufUniqueNetworkLabels = new Set();
+            if (data.cuf) {
+                Object.entries(data.cuf).forEach(([networkLabel, items]) => {
+                    if (items.error) return;
+                    cufUniqueNetworkLabels.add(networkLabel);
+                    if (Array.isArray(items)) {
+                        items.forEach(item => {
+                            cufUniqueCarriers.add(item.Carrier);
+                            cufPlotData.push({ [label_name]: networkLabel, Carrier: item.Carrier, Value: item.CUF * 100 });
+                        });
+                    }
                 });
             }
 
-            // Placeholder for technology/component colors - can be expanded later
-            if (techColorsContainer) {
-                 // Example: techColorsContainer.innerHTML = '<p>Specific component color settings would go here.</p>';
+            if (cufPlotData.length > 0) {
+                const cufTraces = [];
+                Array.from(cufUniqueCarriers).forEach(carrier => {
+                    const xValues = [];
+                    const yValues = [];
+                    Array.from(cufUniqueNetworkLabels).forEach(netLabel => {
+                         const item = cufPlotData.find(d => d[label_name] === netLabel && d.Carrier === carrier);
+                         xValues.push(netLabel);
+                         yValues.push(item ? item.Value : 0);
+                    });
+                    cufTraces.push({
+                        x: xValues,
+                        y: yValues,
+                        name: carrier,
+                        type: 'bar',
+                        marker: { color: effectiveColors[carrier] || getRandomColor() }
+                    });
+                });
+                const cufLayout = {
+                    title: 'Capacity Utilization Factor (CUF) Comparison',
+                    xaxis: { title: label_name, automargin: true },
+                    yaxis: { title: 'CUF (%)' },
+                    barmode: 'group',
+                    legend: { traceorder: 'reversed', orientation: 'h', y: -0.3, yanchor: 'bottom', x:0.5, xanchor:'center' },
+                    height: 450, margin: { b: 150 }
+                };
+                if (typeof Plotly !== 'undefined') Plotly.newPlot(mainPlotContainer, cufTraces, cufLayout, { responsive: true });
+            } else {
+                mainPlotContainer.innerHTML = '<div class="alert alert-info m-3">No CUF data to compare.</div>';
             }
 
-            const modal = new bootstrap.Modal(document.getElementById('pypsaColorConfigModal'));
-            modal.show();
+            // Curtailment Plot
+            const curtPlotData = [];
+            const curtUniqueCarriers = new Set();
+            const curtUniqueNetworkLabels = new Set();
+            if (data.curtailment) {
+                Object.entries(data.curtailment).forEach(([networkLabel, items]) => {
+                    if (items.error) return;
+                    curtUniqueNetworkLabels.add(networkLabel);
+                    if (Array.isArray(items)) {
+                        items.forEach(item => {
+                            curtUniqueCarriers.add(item.Carrier);
+                            curtPlotData.push({ [label_name]: networkLabel, Carrier: item.Carrier, Value: item['Curtailment (%)'] });
+                        });
+                    }
+                });
+            }
 
-        } catch (error) {
-            console.error("Error populating PyPSA color settings modal:", error);
-            showGlobalAlert(`Error loading color settings: ${error.message}`, 'danger');
-            carrierColorsContainer.innerHTML = '<p class="text-danger">Error loading carrier colors.</p>';
+            if (curtPlotData.length > 0) {
+                secondaryRow.style.display = 'flex';
+                downloadComparisonSecondaryBtn.style.display = 'inline-block';
+                const curtTraces = [];
+                 Array.from(curtUniqueCarriers).forEach(carrier => {
+                    const xValues = [];
+                    const yValues = [];
+                    Array.from(curtUniqueNetworkLabels).forEach(netLabel => {
+                         const item = curtPlotData.find(d => d[label_name] === netLabel && d.Carrier === carrier);
+                         xValues.push(netLabel);
+                         yValues.push(item ? item.Value : 0);
+                    });
+                    curtTraces.push({
+                        x: xValues,
+                        y: yValues,
+                        name: carrier,
+                        type: 'bar',
+                        marker: { color: effectiveColors[carrier] || getRandomColor() }
+                    });
+                });
+                const curtLayout = {
+                    title: 'Curtailment (%) Comparison',
+                    xaxis: { title: label_name, automargin: true },
+                    yaxis: { title: 'Curtailment (%)' },
+                    barmode: 'group',
+                    legend: { traceorder: 'reversed', orientation: 'h', y: -0.3, yanchor: 'bottom', x:0.5, xanchor:'center' },
+                    height: 450, margin: { b: 150 }
+                };
+                if (typeof Plotly !== 'undefined') Plotly.newPlot(secondaryPlotContainer, curtTraces, curtLayout, { responsive: true });
+            } else {
+                secondaryPlotContainer.innerHTML = '<div class="alert alert-info m-3">No curtailment data to compare.</div>';
+                secondaryRow.style.display = 'flex';
+            }
+        } else if (type === 'emissions') {
+            // Total Emissions Plot
+            const totalEmissionsPlotData = [];
+            if (data.total) {
+                Object.entries(data.total).forEach(([networkLabel, items]) => {
+                    if (items.error) return;
+                    if (items && Array.isArray(items) && items.length > 0) {
+                        // Assuming items is an array of records like [{'Period': 'Overall', 'Total CO2 Emissions (Tonnes)': VAL}]
+                        const overallItem = items.find(it => it.Period === 'Overall') || items[0];
+                        if(overallItem) {
+                            totalEmissionsPlotData.push({ [label_name]: networkLabel, Value: overallItem['Total CO2 Emissions (Tonnes)'] });
+                        }
+                    }
+                });
+            }
+            if (totalEmissionsPlotData.length > 0) {
+                const totalEmTraces = [{
+                    x: totalEmissionsPlotData.map(d => d[label_name]),
+                    y: totalEmissionsPlotData.map(d => d.Value),
+                    type: 'bar',
+                    marker: { color: 'rgba(75, 192, 192, 0.8)'} // Example color
+                }];
+                const totalEmLayout = {
+                    title: 'Total CO₂ Emissions Comparison',
+                    xaxis: { title: label_name, automargin: true },
+                    yaxis: { title: `Total CO₂ Emissions (${unit || 'Tonnes'})` },
+                    height: 450, margin: { b: 100 }
+                };
+                if (typeof Plotly !== 'undefined') Plotly.newPlot(mainPlotContainer, totalEmTraces, totalEmLayout, { responsive: true });
+            } else {
+                mainPlotContainer.innerHTML = '<div class="alert alert-info m-3">No total emissions data to compare.</div>';
+            }
+
+            // Emissions by Carrier Plot
+            const byCarrierPlotData = [];
+            const byCarrierUniqueCarriers = new Set();
+            const byCarrierUniqueNetworkLabels = new Set();
+
+            if (data.by_carrier) {
+                Object.entries(data.by_carrier).forEach(([networkLabel, items]) => {
+                    if (items.error) return;
+                    byCarrierUniqueNetworkLabels.add(networkLabel);
+                    if (Array.isArray(items)) {
+                        // Assuming items is like [{'Period':'Overall', 'Carrier':'Coal', 'Emissions (Tonnes)': VAL}, ...]
+                        const periodItems = items.filter(it => it.Period === 'Overall' || items.every(i => i.Period !== 'Overall')); // Prefer 'Overall'
+                        periodItems.forEach(item => {
+                            byCarrierUniqueCarriers.add(item.Carrier);
+                            byCarrierPlotData.push({ [label_name]: networkLabel, Carrier: item.Carrier, Value: item['Emissions (Tonnes)'] });
+                        });
+                    }
+                });
+            }
+
+            if (byCarrierPlotData.length > 0) {
+                secondaryRow.style.display = 'flex';
+                downloadComparisonSecondaryBtn.style.display = 'inline-block';
+                const byCarrierTraces = [];
+                Array.from(byCarrierUniqueCarriers).forEach(carrier => {
+                    const xValues = [];
+                    const yValues = [];
+                     Array.from(byCarrierUniqueNetworkLabels).forEach(netLabel => {
+                         const item = byCarrierPlotData.find(d => d[label_name] === netLabel && d.Carrier === carrier);
+                         xValues.push(netLabel);
+                         yValues.push(item ? item.Value : 0);
+                    });
+                    byCarrierTraces.push({
+                        x: xValues,
+                        y: yValues,
+                        name: carrier,
+                        type: 'bar',
+                        marker: { color: effectiveColors[carrier] || getRandomColor() }
+                    });
+                });
+                const byCarrierLayout = {
+                    title: 'CO₂ Emissions by Carrier Comparison',
+                    xaxis: { title: label_name, automargin: true },
+                    yaxis: { title: `Emissions (${unit || 'Tonnes'})` },
+                    barmode: 'stack',
+                    legend: { traceorder: 'reversed', orientation: 'h', y: -0.3, yanchor: 'bottom', x:0.5, xanchor:'center' },
+                    height: 450, margin: { b: 150 }
+                };
+                if (typeof Plotly !== 'undefined') Plotly.newPlot(secondaryPlotContainer, byCarrierTraces, byCarrierLayout, { responsive: true });
+            } else {
+                secondaryPlotContainer.innerHTML = '<div class="alert alert-info m-3">No emissions by carrier data to compare.</div>';
+                secondaryRow.style.display = 'flex';
+            }
+        } else {
+            mainPlotContainer.innerHTML = `<div class="alert alert-info">Comparison type "${type}" is not yet fully implemented for plotting.</div>`;
         }
     }
 
-    const pypsaColorSettingsBtn = document.getElementById('pypsaColorSettingsBtn');
-    if (pypsaColorSettingsBtn) {
-        pypsaColorSettingsBtn.addEventListener('click', showPypsaColorModal);
+    // General utility functions
+    function showGlobalAlert(message, category = 'info', duration = 5000) {
+        const container = document.querySelector('.flash-messages-container');
+        if (!container) {
+            console.warn("Flash messages container not found. Alert:", message);
+            alert(`${category.toUpperCase()}: ${message}`);
+            return;
+        }
+
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${category} alert-dismissible fade show`;
+        alertDiv.setAttribute('role', 'alert');
+
+        let iconClass = 'fa-info-circle';
+        if (category === 'success') iconClass = 'fa-check-circle';
+        else if (category === 'danger' || category === 'warning') iconClass = 'fa-exclamation-triangle';
+
+        alertDiv.innerHTML = `
+            <i class="fas ${iconClass} alert-icon"></i>
+            <div class="alert-content">${message}</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        container.appendChild(alertDiv);
+
+        if (duration > 0 && (category === 'info' || category === 'success')) {
+            setTimeout(() => {
+                const bsAlert = bootstrap.Alert.getInstance(alertDiv);
+                if (bsAlert) bsAlert.close();
+                else if (alertDiv.parentElement) alertDiv.remove();
+            }, duration);
+        }
     }
 
-    const savePypsaColorsBtn = document.getElementById('savePypsaColorsBtn');
-    if (savePypsaColorsBtn) {
-        savePypsaColorsBtn.addEventListener('click', async function() {
-            if (!window.colorManager) {
-                showGlobalAlert('Color management system is not initialized.', 'danger');
-                return;
-            }
-            this.disabled = true;
-            this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
-
-            const colorSavePromises = [];
-            document.querySelectorAll('#carrierColorsConfigContent input[type="color"], #technologyColorsConfigContent input[type="color"]').forEach(input => {
-                const category = input.dataset.category;
-                const item = input.dataset.item;
-                const newColor = input.value;
-                colorSavePromises.push(window.colorManager.setColor(category, item, newColor));
-            });
-
-            try {
-                await Promise.all(colorSavePromises);
-                // await window.colorManager.loadColors(); // Ensure local cache is updated
-                showGlobalAlert('PyPSA color configurations saved successfully.', 'success');
-
-                const modalEl = document.getElementById('pypsaColorConfigModal');
-                const modal = bootstrap.Modal.getInstance(modalEl);
-                if (modal) modal.hide();
-
-                // Refresh charts to reflect new colors
-                if (state.currentNetworkPath && analysisDashboard.style.display === 'block') {
-                    showLoadingIndicatorsForDashboard();
-                    reloadAllData(state.currentNetworkPath)
-                        .catch(error => {
-                            showGlobalAlert(`Error reloading data after color save: ${error.message}`, 'danger');
-                        })
-                        .finally(() => {
-                            hideLoadingIndicatorsForDashboard();
-                        });
-                }
-            } catch (error) {
-                console.error('Error saving PyPSA color configurations:', error);
-                showGlobalAlert(`Error saving colors: ${error.message}`, 'danger');
-            } finally {
-                this.disabled = false;
-                this.innerHTML = '<i class="fas fa-save me-1"></i> Save Colors';
-            }
-        });
+    function getRandomColor() {
+        const letters = '0123456789ABCDEF';
+        let color = '#';
+        for (let i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
     }
-// Ensure this is placed before the closing }); of DOMContentLoaded or in a similar scope
+
+    // Initial population of scenarios and files
+    refreshNetworkFiles();
 
 });
