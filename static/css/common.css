@@ -256,6 +256,35 @@ body:not(.sidebar-collapsed) .sidebar-toggle-btn i:before {
     width: calc(100% - var(--sidebar-width-collapsed)) !important;
 }
 
+/* ===== GRID OVERRIDES (Inspired by layout-fixes.css) ===== */
+/* These establish new default paddings/margins for the Bootstrap grid system. */
+/* Note: overflow-x: hidden from layout-fixes.css is intentionally omitted here,
+   as it's better to fix content causing overflow directly. */
+
+.container-fluid {
+    /* Bootstrap default is width: 100%; */
+    /* max-width: 100%; /* This is default for container-fluid */
+    padding-left: var(--spacing-md); /* Overriding Bootstrap default */
+    padding-right: var(--spacing-md); /* Overriding Bootstrap default */
+    /* box-sizing: border-box; /* Default for Bootstrap */
+}
+
+.row {
+    /* Overriding Bootstrap's negative margins to achieve zero margins,
+       often paired with custom column padding. */
+    margin-left: 0;
+    margin-right: 0;
+    /* width: 100%; /* Added from layout-fixes, make sure it doesn't conflict with Bootstrap's flex behavior */
+}
+
+.col,
+[class*="col-"] {
+    /* Overriding Bootstrap's default column padding (gutters) */
+    padding-left: var(--spacing-sm);
+    padding-right: var(--spacing-sm);
+    /* box-sizing: border-box; /* Default for Bootstrap */
+}
+
 /* ===== SIDEBAR TOOLTIPS FOR COLLAPSED STATE ===== */
 .sidebar-collapsed .nav-link {
     position: relative;
@@ -2282,6 +2311,14 @@ p {
 /* ===== CONTENT AREA (from sidebar-layout.css) ===== */
 .content-area { /* Child of .main-content */
   flex: 1;
+
+  width: 100%; /* from layout-fixes.css */
+  max-width: 100%; /* from layout-fixes.css */
+  box-sizing: border-box; /* from layout-fixes.css */
+  overflow-x: hidden; /* from layout-fixes.css, kept cautiously */
+  overflow-y: auto; /* existing in common.css */
+  padding: var(--spacing-xl); /* existing in common.css, layout-fixes had var(--spacing-md) */
+=======
   padding: var(--spacing-xl);
   overflow-y: auto; /* common.css .main-content has overflow-x: hidden, this is for y-scroll */
   background: var(--neutral-50); /* Matches body, but can be overridden */
