@@ -34,10 +34,13 @@
     box-sizing: border-box;
 }
 
-/* ===== TABLE SIZING FIXES ===== */
-.table-responsive {
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
+/* ===== TABLE SIZING FIXES (REMOVED - Integrated into common.css) ===== */
+/* The styles formerly here have been merged into static/css/common.css
+   to provide better default table styling without excessive use of !important.
+   Key features like sticky headers, text wrapping in cells, consistent padding,
+   and responsive text alignment are now part of the general table rules in common.css.
+*/
+/* Original start of .table-responsive was here */
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     margin-bottom: var(--spacing-lg);

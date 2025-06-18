@@ -44,15 +44,7 @@ class DemandVisualizationApp {
         };
         
         // Chart color schemes
-        this.modelColors = {
-            'MLR': '#3b82f6',
-            'SLR': '#ef4444', 
-            'WAM': '#f59e0b',
-            'TimeSeries': '#10b981',
-            'User Data': '#8b5cf6'
-        };
         
-        this.sectorColors = this.generateSectorColors();
         
         this.init();
     }
@@ -484,8 +476,17 @@ class DemandVisualizationApp {
                 datasets: [{
                     label: `Total Demand (${data.unit})`,
                     data: sectorTotals,
-                    backgroundColor: sectors.map(sector => this.getSectorColor(sector) + '80'),
-                    borderColor: sectors.map(sector => this.getSectorColor(sector)),
+                    backgroundColor: sectors.map(sectorName => {
+                        const color = window.colorManager?.getColor('sectors', sectorName) ||
+                                      window.colorManager?.getChartColors(1)[0] ||
+                                      '#CCCCCC'; // Fallback grey
+                        return color + '80'; // Apply alpha
+                    }),
+                    borderColor: sectors.map(sectorName => {
+                        return window.colorManager?.getColor('sectors', sectorName) ||
+                               window.colorManager?.getChartColors(1)[0] ||
+                               '#CCCCCC'; // Fallback grey
+                    }),
                     borderWidth: 2
                 }]
             },
@@ -656,8 +657,12 @@ class DemandVisualizationApp {
             return {
                 label: model,
                 data: sectorData[model] || [],
-                borderColor: this.modelColors[model] || this.generateRandomColor(index),
-                backgroundColor: (this.modelColors[model] || this.generateRandomColor(index)) + '20',
+                borderColor: window.colorManager?.getColor('models', model) ||
+                             window.colorManager?.getChartColors(1)[0] ||
+                             this.generateRandomColor(index), // Existing fallback if others fail
+                backgroundColor: (window.colorManager?.getColor('models', model) ||
+                                  window.colorManager?.getChartColors(1)[0] ||
+                                  this.generateRandomColor(index)) + '20', // Apply alpha
                 borderWidth: 2,
                 pointRadius: 4,
                 pointHoverRadius: 6,
@@ -1066,8 +1071,12 @@ class DemandVisualizationApp {
             datasets.push({
                 label: `${this.state.comparisonData.scenario2.name} - ${model}`,
                 data: sector2Data[model] || [],
-                borderColor: this.modelColors[model] || this.generateRandomColor(index),
-                backgroundColor: (this.modelColors[model] || this.generateRandomColor(index)) + '10',
+                borderColor: window.colorManager?.getColor('models', model) ||
+                             window.colorManager?.getChartColors(1)[0] ||
+                             this.generateRandomColor(index),
+                backgroundColor: (window.colorManager?.getColor('models', model) ||
+                                  window.colorManager?.getChartColors(1)[0] ||
+                                  this.generateRandomColor(index)) + '10', // Corrected alpha to '10'
                 borderWidth: 3,
                 pointRadius: 4,
                 pointHoverRadius: 6,
@@ -1272,27 +1281,6 @@ class DemandVisualizationApp {
         } catch (error) {
             console.error('Error loading existing T&D losses:', error);
             this.state.tdLosses = [
-                { year: 2025, loss_percentage: 12.0 },
-                { year: 2030, loss_percentage: 8.0 },
-                { year: 2037, loss_percentage: 6.0 }
-            ];
-            this.updateTdLossesDisplay();
-        }
-    }
-    
-    updateTdLossesDisplay() {
-        const container = document.getElementById('tdLossesContent');
-        if (!container) return;
-        
-        let html = '';
-        this.state.tdLosses.forEach((loss, index) => {
-            html += `
-                <div class="td-losses-item">
-                    <input type="number" class="form-control" placeholder="Year" 
-                           value="${loss.year}" data-index="${index}" data-field="year"
-                           min="${this.state.filters.startYear || 2000}" max="${this.state.filters.endYear || 2100}">
-                    <input type="number" class="form-control" placeholder="Loss %" 
-                           value="${loss.loss_percentage}" data-index="${index}" data-field="loss_percentage"
                            min="0" max="100" step="0.1">
                     <button class="btn btn-sm btn-outline-danger" onclick="demandVizApp.removeTdLossEntry(${index})">
                         <i class="fas fa-trash"></i>
@@ -1537,11 +1525,29 @@ class DemandVisualizationApp {
         );
         
         // Create datasets for sectors
-        const datasets = sectorColumns.map((sector, index) => ({
-            label: sector,
-            data: data.map(row => row[sector] || 0),
-            backgroundColor: this.getSectorColor(sector) + (chartType === 'area' ? '60' : '80'),
-            borderColor: this.getSectorColor(sector),
+        const datasets = sectorColumns.map((sectorName, index) => {
+            const sectorColor = window.colorManager?.getColor('sectors', sectorName) ||
+                                window.colorManager?.getChartColors(1)[0] ||
+                                '#A9A9A9'; // Fallback dark grey
+            return {
+                label: sectorName,
+                data: data.map(row => row[sectorName] || 0),
+                backgroundColor: sectorColor + (chartType === 'area' ? '60' : '80'), // Apply alpha
+                borderColor: sectorColor,
+                borderWidth: 2,
+                fill: chartType === 'area',
+            };
+        }));
+
+        // Add T&D losses dataset
+        const tdLossesColor = window.colorManager?.getColor('status', 'error') ||
+                              window.colorManager?.getColor('charts', 'tertiary') ||
+                              '#FF0000'; // Fallback red
+        datasets.push({
+            label: 'T&D Losses',
+            data: data.map(row => row.TD_Losses || 0),
+            backgroundColor: tdLossesColor + (chartType === 'area' ? '60' : '80'), // Apply alpha
+            borderColor: tdLossesColor,
             borderWidth: 2,
             fill: chartType === 'area',
             tension: 0.1

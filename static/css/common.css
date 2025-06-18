@@ -256,6 +256,35 @@ body:not(.sidebar-collapsed) .sidebar-toggle-btn i:before {
     width: calc(100% - var(--sidebar-width-collapsed)) !important;
 }
 
+/* ===== GRID OVERRIDES (Inspired by layout-fixes.css) ===== */
+/* These establish new default paddings/margins for the Bootstrap grid system. */
+/* Note: overflow-x: hidden from layout-fixes.css is intentionally omitted here,
+   as it's better to fix content causing overflow directly. */
+
+.container-fluid {
+    /* Bootstrap default is width: 100%; */
+    /* max-width: 100%; /* This is default for container-fluid */
+    padding-left: var(--spacing-md); /* Overriding Bootstrap default */
+    padding-right: var(--spacing-md); /* Overriding Bootstrap default */
+    /* box-sizing: border-box; /* Default for Bootstrap */
+}
+
+.row {
+    /* Overriding Bootstrap's negative margins to achieve zero margins,
+       often paired with custom column padding. */
+    margin-left: 0;
+    margin-right: 0;
+    /* width: 100%; /* Added from layout-fixes, make sure it doesn't conflict with Bootstrap's flex behavior */
+}
+
+.col,
+[class*="col-"] {
+    /* Overriding Bootstrap's default column padding (gutters) */
+    padding-left: var(--spacing-sm);
+    padding-right: var(--spacing-sm);
+    /* box-sizing: border-box; /* Default for Bootstrap */
+}
+
 /* ===== SIDEBAR TOOLTIPS FOR COLLAPSED STATE ===== */
 .sidebar-collapsed .nav-link {
     position: relative;
@@ -915,14 +944,15 @@ p {
 }
 
 /* ===== TABLE STYLES WITH HORIZONTAL SCROLLING ===== */
+/* Refined based on layout-fixes.css, !important removed where possible */
 .table-responsive {
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
+    overflow-x: auto; /* Horizontal scroll is desired */
+    overflow-y: hidden; /* Kept from original, might be restrictive for tall tables but consistent with fixes */
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     margin-bottom: var(--spacing-lg);
-    max-width: 100% !important;
-    width: 100% !important;
+    max-width: 100%;
+    width: 100%;
     background: var(--neutral-0);
     border: 1px solid var(--neutral-200);
     box-sizing: border-box;
@@ -944,16 +974,35 @@ p {
     background: var(--neutral-100);
     font-weight: 600;
     color: var(--neutral-700);
-    text-align: left;
-    padding: 1rem;
-    border-bottom: 2px solid var(--neutral-200);
-    white-space: nowrap;
+    text-align: center; /* Updated from left */
+    padding: 0.875rem 0.625rem; /* Updated padding */
+    border-bottom: 2px solid var(--neutral-200); /* Base border, specific themes override */
+    white-space: nowrap; /* Ensures headers don't wrap */
+
+    /* Sticky properties for general tables, promoting usability */
+    position: sticky;
+    top: 0;
+    z-index: 10; /* Standard z-index for sticky table headers */
+
+    /* Default appearance for sticky state if no other theme applies */
+    /* The existing background: var(--neutral-100) and color: var(--neutral-700) will apply by default.
+       If a distinct sticky look is needed universally, uncomment and adjust these: */
+    /* background: var(--neutral-0); */ /* Example: Use a light background for sticky state */
+    /* color: var(--neutral-800); */    /* Example: Ensure readable text */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Softer shadow for general sticky state */
+    /* min-width: 100px; /* From layout-fixes, but can be too restrictive. Consider a utility class if needed. */
 }
 
 .table td {
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 0.625rem; /* Adjusted padding */
     border-bottom: 1px solid var(--neutral-200);
     vertical-align: middle;
+    text-align: center; /* Added from layout-fixes.css for consistency */
+    white-space: normal; /* Allow cell content to wrap by default */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    /* min-width: 80px; /* From layout-fixes. Can be restrictive. Consider utility classes. */
+    /* max-width: 250px; /* From layout-fixes, adjusted. Good for control but can be restrictive. */
 }
 
 .table tbody tr:hover {
@@ -1891,13 +1940,6 @@ p {
     box-shadow: var(--shadow-sm);
 }
 
-/* ===== COMPARISON VIEW ENHANCEMENTS ===== */
-.comparison-container {
-    background: var(--neutral-50);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    border: 1px solid var(--neutral-200);
-}
 
 .comparison-header {
     background: var(--primary-gradient);
@@ -2029,4 +2071,589 @@ p {
     .chart-download-btn {
         display: none;
     }
+}/* Color Picker Configuration Styles */
+.color-config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--spacing-md); /* 1rem */
+    margin-bottom: var(--spacing-lg); /* 1.5rem */
+}
+
+.color-config-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem; /* Consider var(--spacing-sm) or var(--spacing-md) */
+    padding: 0.75rem; /* Consider var(--spacing-sm) or var(--spacing-md) */
+    background: var(--neutral-50); /* #f8fafc */
+    border-radius: var(--radius-md); /* 0.5rem */
+    border: 1px solid var(--neutral-200); /* #e2e8f0 */
+    box-shadow: var(--shadow-sm); /* 0 1px 2px rgba(0,0,0,0.05) */
+}
+
+.color-config-item label {
+    flex-grow: 1;
+    font-size: 0.875rem;
+    color: var(--neutral-700); /* #374151 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.color-config-item input[type='color'] {
+    width: 40px;
+    height: 30px;
+    border: 1px solid var(--neutral-300); /* #d1d5db is close to neutral-300 */
+    border-radius: var(--radius-sm); /* 0.25rem */
+    cursor: pointer;
+    transition: box-shadow var(--transition-base);
+}
+
+.color-config-item input[type='color']:hover {
+    box-shadow: 0 0 0 2px var(--primary-200); /* Using primary-200 for a light blue shadow */
+}
+
+.color-config-item input[type='color']::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-config-item input[type='color']::-webkit-color-swatch {
+    border: none;
+    border-radius: var(--radius-sm);
+}
+
+/* ===== STYLES MERGED FROM sidebar-layout.css ===== */
+
+/* ===== SIDEBAR HEADER (from sidebar-layout.css) ===== */
+.sidebar-header {
+  background: var(--primary-gradient);
+  color: var(--neutral-0);
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--primary-600);
+  position: sticky;
+  top: 0;
+  z-index: 10; /* Ensure it's above sidebar content but below top-bar if overlapping */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  text-decoration: none;
+  color: inherit;
+}
+
+.logo-img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.logo-text {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--neutral-0);
+}
+
+.logo-text span {
+  color: var(--secondary-200);
+  font-weight: 500;
+}
+
+/* ===== SIDEBAR NAVIGATION (from sidebar-layout.css) ===== */
+.sidebar-nav {
+  padding: var(--spacing-lg) 0;
+  flex: 1;
+}
+
+.nav-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.nav-section-title {
+  color: var(--neutral-500);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  margin-bottom: var(--spacing-sm);
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-item {
+  margin-bottom: var(--spacing-xs);
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0.75rem var(--spacing-lg);
+  color: var(--neutral-600);
+  text-decoration: none;
+  border-radius: 0; /* common.css might override this for specific nav-links if needed */
+  transition: all var(--transition-base);
+  font-weight: 500;
+  position: relative;
+  border-left: 3px solid transparent;
+}
+
+.nav-link:hover {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  border-left-color: var(--primary-300);
+}
+
+/* Note: common.css has its own .nav-link:hover::after for tooltips in collapsed state. This should not conflict. */
+
+.nav-link.active {
+  background: var(--primary-100);
+  color: var(--primary-700);
+  font-weight: 600;
+  border-left-color: var(--primary-500);
+}
+
+.nav-link i { /* Assuming FontAwesome or similar icon library */
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.nav-text {
+  flex: 1;
+}
+
+/* ===== SIDEBAR FOOTER (from sidebar-layout.css) ===== */
+.sidebar-footer {
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--neutral-200);
+  background: var(--neutral-50);
+}
+
+/* ===== TOP BAR CONTENT (from sidebar-layout.css) ===== */
+/* .top-bar itself is styled in common.css, these are for its children */
+.page-title { /* This class is for a container within top-bar */
+  flex: 1;
+}
+
+.page-title h1 {
+  margin: 0;
+  font-size: 1.75rem; /* common.css h1 is 2.5rem, this is more specific for page titles */
+  font-weight: 700;
+  color: var(--neutral-800);
+  line-height: 1.2;
+}
+
+.project-subtitle {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--neutral-500);
+  margin-top: 0.25rem;
+}
+
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.action-button { /* General action button, might be used in top-bar or elsewhere */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--neutral-600);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  position: relative;
+}
+
+.action-button:hover {
+  background: var(--neutral-100);
+  color: var(--primary-600);
+}
+
+.action-button:focus { /* Overridden by a more specific one in sidebar-layout.css if that's kept */
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1); /* Corresponds to primary-500 with alpha */
+}
+
+.notification-badge { /* For action-buttons typically */
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: var(--error-500);
+  color: var(--neutral-0);
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-full);
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== CONTENT AREA (from sidebar-layout.css) ===== */
+.content-area { /* Child of .main-content */
+  flex: 1;
+  width: 100%; /* from layout-fixes.css */
+  max-width: 100%; /* from layout-fixes.css */
+  box-sizing: border-box; /* from layout-fixes.css */
+  overflow-x: hidden; /* from layout-fixes.css, kept cautiously */
+  overflow-y: auto; /* existing in common.css */
+  padding: var(--spacing-xl); /* existing in common.css, layout-fixes had var(--spacing-md) */
+  background: var(--neutral-50); /* Matches body, but can be overridden */
+}
+
+/* Responsive adjustments for content-area from sidebar-layout.css */
+@media (max-width: 992px) {
+  .content-area {
+      padding: var(--spacing-lg);
+  }
+}
+@media (max-width: 768px) {
+  .content-area {
+      padding: var(--spacing-md);
+  }
+}
+@media (max-width: 576px) {
+  .content-area {
+      padding: var(--spacing-sm);
+  }
+}
+
+/* Note: .sidebar-overlay is handled by common.css, appears more comprehensive. */
+/* Note: General modal styling (.modal-content, .modal-header, .modal-body, .modal-footer, .btn-close)
+   is present in sidebar-layout.css but common.css also has extensive .modal-* styles.
+   Assuming base modal styles from common.css are sufficient or will be reviewed separately if issues arise.
+   Specific modal *content* styles like .notifications-list will be added. */
+
+/* ===== MODAL CONTENT STYLES (from sidebar-layout.css) ===== */
+/* Base .modal-content, .modal-header, etc. are in common.css or assumed to be sufficient. These are for specific content within modals. */
+
+/* NOTIFICATIONS MODAL */
+.notifications-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--neutral-200);
+  transition: background var(--transition-base);
+}
+
+.notification-item:hover {
+    background: var(--neutral-50); /* Reverted to original value */
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--neutral-0);
+  font-size: 1rem;
+}
+
+.notification-icon.info { background: var(--info-500); }
+.notification-icon.success { background: var(--success-500); }
+.notification-icon.warning { background: var(--warning-500); }
+.notification-icon.error { background: var(--error-500); }
+
+.notification-content {
+  flex: 1;
+}
+
+.notification-title {
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin-bottom: 0.25rem;
+}
+
+.notification-message {
+  color: var(--neutral-600);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.notification-time {
+  color: var(--neutral-500);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.notification-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+}
+
+/* SEARCH MODAL */
+#globalSearchResults { /* ID selector, ensure it's used in HTML */
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: var(--spacing-md);
+}
+
+.search-result-item {
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--neutral-200);
+  margin-bottom: var(--spacing-sm);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.search-result-item:hover {
+  background: var(--primary-50);
+  border-color: var(--primary-200);
+}
+
+.search-result-title {
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin-bottom: 0.25rem;
+}
+
+.search-result-description {
+  color: var(--neutral-600);
+  font-size: 0.875rem;
+}
+
+.search-result-type {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  background: var(--neutral-100);
+  color: var(--neutral-600);
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  margin-top: 0.5rem;
+}
+
+/* ===== GLOBAL ALERT PLACEHOLDER (Toast Styles from sidebar-layout.css) ===== */
+#globalAlertPlaceholder { /* ID selector */
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1050; /* Ensure it's above most elements, Bootstrap toast z-index is 1090 */
+  max-width: 400px;
+}
+
+.toast { /* General toast styling */
+  background: var(--neutral-0);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  margin-bottom: var(--spacing-sm);
+  /* Default opacity and other states are usually handled by JS */
+}
+
+.toast-header {
+  background: var(--neutral-100);
+  border-bottom: 1px solid var(--neutral-200);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  /* color, display:flex, etc. might be needed if not inherited */
+}
+
+.toast-body {
+  padding: var(--spacing-lg);
+}
+
+/* ===== FLASH MESSAGES (from sidebar-layout.css) ===== */
+.flash-messages-container { /* Container for flash messages */
+  margin-bottom: var(--spacing-lg);
+}
+
+.flash-messages-container .alert { /* Specific styling for alerts within this container */
+  border-radius: var(--radius-lg); /* Already in common.css .alert, but ensures consistency */
+  border: none; /* Overrides default .alert border if any */
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===== CUSTOM SCROLLBAR for SIDEBAR (from sidebar-layout.css) ===== */
+/* Applied to .sidebar which is styled in common.css */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: var(--neutral-100); /* common.css uses --primary-300 for other scrollbars, this is lighter */
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--neutral-300); /* common.css uses --primary-500 for other scrollbars */
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-400);
+}
+
+/* Firefox scrollbar for .sidebar */
+.sidebar { /* Add these properties to the existing .sidebar rule if not present, or ensure they merge */
+  scrollbar-width: thin;
+  scrollbar-color: var(--neutral-300) var(--neutral-100);
+}
+
+/* ===== ANIMATION KEYFRAMES & CLASSES (from sidebar-layout.css) ===== */
+@keyframes slideInFromLeft {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes slideOutToLeft {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes fadeInUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Apply animations */
+.sidebar-opening { /* JS should add/remove this class */
+  animation: slideInFromLeft 0.3s ease-out;
+}
+
+.sidebar-closing { /* JS should add/remove this class */
+  animation: slideOutToLeft 0.3s ease-in;
+}
+
+.content-fade-in { /* Can be used for main content area loading */
+  animation: fadeInUp 0.4s ease-out;
+}
+
+/* ===== DARK MODE SUPPORT (from sidebar-layout.css) ===== */
+/* This is a basic dark theme. More specific component adjustments might be needed. */
+@media (prefers-color-scheme: dark) {
+  :root { /* Redefine root variables for dark mode */
+      --neutral-0: #0f172a;    /* Was white, now dark slate */
+      --neutral-50: #1e293b;   /* Was light grey, now darker slate */
+      --neutral-100: #334155;  /* etc. */
+      --neutral-200: #475569;
+      --neutral-300: #64748b;
+      --neutral-400: #94a3b8;
+      --neutral-500: #cbd5e1;  /* Mid grey, now lighter */
+      --neutral-600: #e2e8f0;  /* Dark grey, now very light */
+      --neutral-700: #f1f5f9;
+      --neutral-800: #f8fafc;  /* Almost black, now almost white */
+      --neutral-900: #ffffff;  /* Black, now white */
+
+      /* Potentially adjust primary/secondary/status colors if they don't contrast well */
+      /* For example, primary-500 might need to be lighter in dark mode */
+      /* --primary-500: #38bdf8; (lighter blue) */
+  }
+
+  body { /* General body adjustments for dark mode */
+      background: var(--neutral-50); /* Darker background */
+      color: var(--neutral-700);    /* Lighter text */
+  }
+
+  /* Add other dark-mode specific overrides for components as needed here */
+  /* e.g., .card, .modal-content, .form-control might need background/color adjustments */
+}
+
+/* ===== ACCESSIBILITY IMPROVEMENTS (from sidebar-layout.css) ===== */
+@media (prefers-reduced-motion: reduce) {
+  * { /* Apply to all elements */
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important; /* Play only once */
+      transition-duration: 0.01ms !important; /* Effectively disable transitions */
+      /* scroll-behavior: auto !important; /* Not in original but good for reduced motion */
+  }
+}
+
+/* Focus styles for keyboard navigation - common.css already has some, this adds to .sidebar-toggle-btn */
+/* .nav-link:focus and .action-button:focus are already in sidebar-layout.css (merged above) */
+/* This ensures the one from sidebar-layout.css for .sidebar-toggle-btn is also considered if it was different.
+   However, common.css has a more specific one for .sidebar-toggle-btn. We'll keep this generic one as a fallback. */
+.sidebar-toggle-btn:focus { /* This is a general focus, common.css has a more styled one */
+  outline: 2px solid var(--primary-500); /* Default focus outline */
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: more) { /* 'high' is deprecated, use 'more' */
+  .sidebar { /* Example: Increase border width for sidebar */
+      border-right-width: 2px;
+      /* border-right-color: currentcolor; /* Ensure it adapts to text color */
+  }
+
+  .nav-link.active { /* Example: Stronger active link indicator */
+      border-left-width: 4px;
+      /* border-left-color: currentcolor; */
+  }
+
+  .top-bar { /* Example: Increase border for top bar */
+      border-bottom-width: 2px;
+      /* border-bottom-color: currentcolor; */
+  }
+  /* Add other high-contrast adjustments as needed */
+}
+
+/* ===== PRINT STYLES (from sidebar-layout.css) ===== */
+@media print {
+  .sidebar,
+  .top-bar,
+  .sidebar-overlay,
+  .sidebar-toggle-btn { /* Ensure toggle is also hidden */
+      display: none !important;
+  }
+
+  .main-content {
+      margin-left: 0 !important;
+      width: 100% !important; /* Ensure it takes full width */
+      padding: 0 !important; /* Remove padding for print */
+  }
+
+  .content-area {
+      padding: 0 !important; /* Remove padding for print */
+      overflow: visible !important; /* Show all content */
+  }
+
+  /* Add other print-specific overrides: hide unnecessary elements, simplify layout */
+  /* E.g., buttons, interactive elements not useful in print */
+  .btn, .action-button, form {
+      display: none !important;
+  }
+
+  a[href]:after { /* Show full URLs for links */
+    content: " (" attr(href) ")";
+  }
+}
+
+
+
+/* For Firefox, to make it look a bit more consistent */
+.color-config-item input[type='color']::-moz-color-swatch {
+    border: none;
+    border-radius: var(--radius-sm);
 }
