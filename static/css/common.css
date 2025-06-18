@@ -915,14 +915,15 @@ p {
 }
 
 /* ===== TABLE STYLES WITH HORIZONTAL SCROLLING ===== */
+/* Refined based on layout-fixes.css, !important removed where possible */
 .table-responsive {
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
+    overflow-x: auto; /* Horizontal scroll is desired */
+    overflow-y: hidden; /* Kept from original, might be restrictive for tall tables but consistent with fixes */
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     margin-bottom: var(--spacing-lg);
-    max-width: 100% !important;
-    width: 100% !important;
+    max-width: 100%;
+    width: 100%;
     background: var(--neutral-0);
     border: 1px solid var(--neutral-200);
     box-sizing: border-box;
@@ -944,16 +945,35 @@ p {
     background: var(--neutral-100);
     font-weight: 600;
     color: var(--neutral-700);
-    text-align: left;
-    padding: 1rem;
-    border-bottom: 2px solid var(--neutral-200);
-    white-space: nowrap;
+    text-align: center; /* Updated from left */
+    padding: 0.875rem 0.625rem; /* Updated padding */
+    border-bottom: 2px solid var(--neutral-200); /* Base border, specific themes override */
+    white-space: nowrap; /* Ensures headers don't wrap */
+
+    /* Sticky properties for general tables, promoting usability */
+    position: sticky;
+    top: 0;
+    z-index: 10; /* Standard z-index for sticky table headers */
+
+    /* Default appearance for sticky state if no other theme applies */
+    /* The existing background: var(--neutral-100) and color: var(--neutral-700) will apply by default.
+       If a distinct sticky look is needed universally, uncomment and adjust these: */
+    /* background: var(--neutral-0); */ /* Example: Use a light background for sticky state */
+    /* color: var(--neutral-800); */    /* Example: Ensure readable text */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Softer shadow for general sticky state */
+    /* min-width: 100px; /* From layout-fixes, but can be too restrictive. Consider a utility class if needed. */
 }
 
 .table td {
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 0.625rem; /* Adjusted padding */
     border-bottom: 1px solid var(--neutral-200);
     vertical-align: middle;
+    text-align: center; /* Added from layout-fixes.css for consistency */
+    white-space: normal; /* Allow cell content to wrap by default */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    /* min-width: 80px; /* From layout-fixes. Can be restrictive. Consider utility classes. */
+    /* max-width: 250px; /* From layout-fixes, adjusted. Good for control but can be restrictive. */
 }
 
 .table tbody tr:hover {
@@ -2309,7 +2329,7 @@ p {
 }
 
 .notification-item:hover {
-  background: var(--neutral-50);
+    background: var(--neutral-50); /* Reverted to original value */
 }
 
 .notification-item:last-child {

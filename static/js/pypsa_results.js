@@ -1,12 +1,10 @@
-
-
 document.addEventListener('DOMContentLoaded', function() {
     // Current state
     const state = {
         currentNetworkPath: null,
         isMultiPeriod: false,
-        currentPeriod: null, 
-        periods: [],         
+        currentPeriod: null,
+        periods: [],
         networkInfo: {},
         startDate: null,
         endDate: null,
@@ -19,9 +17,9 @@ document.addEventListener('DOMContentLoaded', function() {
         emissionsData: null,
         pricesData: null,
         networkFlowData: null,
-        colorPalette: {}, 
+        colorPalette: {},
         extractedNetworkPath: null,
-        allNcFiles: [] 
+        allNcFiles: []
     };
 
     // Initialize UI elements
@@ -36,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const dateFilterContainer = document.getElementById('dateFilterContainer');
     const startDateInput = document.getElementById('startDate');
     const endDateInput = document.getElementById('endDate');
-    const resolutionSelectEl = document.getElementById('resolutionSelect'); 
+    const resolutionSelectEl = document.getElementById('resolutionSelect');
     const applyFilterBtn = document.getElementById('applyFilterBtn');
     const backToSelectionBtn = document.getElementById('backToSelectionBtn');
     const newCapacityMethodSelect = document.getElementById('newCapacityMethodSelect');
@@ -44,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
     const initialNcFilesOptions = Array.from(document.querySelectorAll('#networkFileSelect option'));
-    if (initialNcFilesOptions.length > 1) { 
+    if (initialNcFilesOptions.length > 1) {
         state.allNcFiles = initialNcFilesOptions
             .filter(opt => opt.value)
             .map(opt => ({
@@ -53,11 +51,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 scenario: opt.dataset.scenario
             }));
     }
-    
+
     // =====================
     // Event Listeners
     // =====================
-    
+
     scenarioSelect.addEventListener('change', function() {
         const selectedScenario = this.value;
         networkFileSelect.innerHTML = '<option value="">Select a network file...</option>';
@@ -69,7 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         networkInfoContainer.style.display = 'none';
     });
-    
+
     networkFileSelect.addEventListener('change', function() {
         const selectedNetworkPath = this.value;
         if (selectedNetworkPath) {
@@ -78,7 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
             networkInfoContainer.style.display = 'none';
         }
     });
-    
+
     networkUploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
         const formData = new FormData(this);
@@ -86,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const originalBtnText = uploadBtn.innerHTML;
         uploadBtn.disabled = true;
         uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Uploading...';
-        
+
         fetch('/pypsa/api/upload_network', { method: 'POST', body: formData })
             .then(response => response.json())
             .then(data => {
@@ -94,7 +92,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 uploadBtn.innerHTML = originalBtnText;
                 if (data.status === 'success') {
                     showGlobalAlert(`Network file '${data.file_info.filename}' uploaded to scenario '${data.file_info.scenario}'!`, 'success');
-                    refreshNetworkFiles(); 
+                    refreshNetworkFiles();
                     networkUploadForm.reset();
                 } else {
                     showGlobalAlert(`Error: ${data.message}`, 'danger');
@@ -106,15 +104,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 showGlobalAlert(`Upload Error: ${error.message}`, 'danger');
             });
     });
-        
+
     backToSelectionBtn.addEventListener('click', function() {
         analysisDashboard.style.display = 'none';
         document.getElementById('networkSelectionSection').style.display = 'block';
         document.getElementById('networkComparisonSection').style.display = 'none';
-        state.currentNetworkPath = null; 
+        state.currentNetworkPath = null;
         state.networkInfo = {};
     });
-    
+
     extractPeriodBtn.addEventListener('click', function() {
         if (state.currentNetworkPath && state.isMultiPeriod && state.currentPeriod) {
             this.disabled = true;
@@ -122,35 +120,35 @@ document.addEventListener('DOMContentLoaded', function() {
             extractPeriod(state.currentNetworkPath, state.currentPeriod);
         }
     });
-    
+
     applyFilterBtn.addEventListener('click', function() {
         const startDateVal = startDateInput.value ? new Date(startDateInput.value) : null;
         const endDateVal = endDateInput.value ? new Date(endDateInput.value) : null;
         const resolutionVal = resolutionSelectEl.value;
-        
+
         if (startDateVal && endDateVal && startDateVal > endDateVal) {
             showGlobalAlert('Start date must be before end date.', 'warning');
             return;
         }
-        
+
         state.startDate = startDateVal ? startDateVal.toISOString().split('T')[0] : null;
         state.endDate = endDateVal ? endDateVal.toISOString().split('T')[0] : null;
         state.resolution = resolutionVal;
-        
+
         this.disabled = true;
         this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Applying...';
-        
+
         showLoadingIndicators(['dispatchStackPlot', 'dailyProfilePlot', 'loadDurationPlot', 'socPlot', 'avgPriceByBusPlot', 'priceDurationPlot']);
 
         Promise.all([
-            fetchDispatchData(state.currentNetworkPath), 
+            fetchDispatchData(state.currentNetworkPath),
             fetchStorageData(state.currentNetworkPath),
-            fetchPricesData(state.currentNetworkPath)    
+            fetchPricesData(state.currentNetworkPath)
         ])
         .then(() => {
-            updateDispatchTab(); 
+            updateDispatchTab();
             updateStorageTab();
-            updatePricesTab();   
+            updatePricesTab();
             showGlobalAlert('Filters applied successfully.', 'success');
         })
         .catch(error => {
@@ -162,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
             hideLoadingIndicators(['dispatchStackPlot', 'dailyProfilePlot', 'loadDurationPlot', 'socPlot', 'avgPriceByBusPlot', 'priceDurationPlot']);
         });
     });
-    
+
     periodSelect.addEventListener('change', function() {
         state.currentPeriod = this.value;
         showLoadingIndicatorsForDashboard();
@@ -174,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
             hideLoadingIndicatorsForDashboard();
         });
     });
-    
+
     document.getElementById('capacityAttributeSelect').addEventListener('change', function() {
         showLoadingIndicators(['capacityByCarrierPlot', 'capacityByRegionPlot']);
         fetchCapacityData(state.currentNetworkPath, this.value)
@@ -182,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => showGlobalAlert(`Error fetching total capacity data: ${error.message}`, 'danger'))
             .finally(() => hideLoadingIndicators(['capacityByCarrierPlot', 'capacityByRegionPlot']));
     });
-    
+
     newCapacityMethodSelect.addEventListener('change', function() {
         showLoadingIndicators(['newCapacityAdditionsPlot']);
         fetchNewCapacityAdditionsData(state.currentNetworkPath, this.value)
@@ -190,19 +188,19 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => showGlobalAlert(`Error fetching new capacity additions: ${error.message}`, 'danger'))
             .finally(() => hideLoadingIndicators(['newCapacityAdditionsPlot']));
     });
-    
+
     document.getElementById('loadExtractedPeriodBtn').addEventListener('click', function() {
         const modalEl = document.getElementById('periodExtractionModal');
         const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         modal.hide();
-        
+
         if (state.extractedNetworkPath) {
-            fetchNetworkInfo(state.extractedNetworkPath, true); 
+            fetchNetworkInfo(state.extractedNetworkPath, true);
         }
     });
-    
+
     initializeComparison();
-    
+
     const analysisTabs = document.querySelectorAll('#analysisTabs .nav-link');
     analysisTabs.forEach(tab => {
         tab.addEventListener('shown.bs.tab', function(e) {
@@ -210,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (targetPaneId) {
                 const plotContainers = document.querySelector(targetPaneId).querySelectorAll('.plot-container > div:not(.loading-indicator)');
                 plotContainers.forEach(pc => {
-                    if (pc.id && typeof Plotly !== 'undefined' && pc.data) { 
+                    if (pc.id && typeof Plotly !== 'undefined' && pc.data) {
                          setTimeout(() => Plotly.Plots.resize(pc.id), 50);
                     }
                 });
@@ -222,10 +220,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.download-btn').forEach(button => {
         button.addEventListener('click', function() {
             const chartId = this.dataset.chart;
-            const plotContainerId = getPlotContainerIdForChart(chartId); 
+            const plotContainerId = getPlotContainerIdForChart(chartId);
             if (plotContainerId) {
                 const plotEl = document.getElementById(plotContainerId);
-                if (plotEl && typeof Plotly !== 'undefined' && plotEl.data) { 
+                if (plotEl && typeof Plotly !== 'undefined' && plotEl.data) {
                     Plotly.downloadImage(plotEl, {format: 'png', filename: chartId});
                 } else {
                     showGlobalAlert(`Chart '${chartId}' (plot ID '${plotContainerId}') not found or not ready for download.`, 'warning');
@@ -235,13 +233,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
+
     // =====================
     // Helper Functions
     // =====================
 
     function getPlotContainerIdForChart(chartId) {
-        const map = { 
+        const map = {
             'dispatchStack': 'dispatchStackPlot',
             'dailyProfile': 'dailyProfilePlot',
             'loadDuration': 'loadDurationPlot',
@@ -304,7 +302,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function populateNetworkFiles(scenario) {
         const filesForScenario = state.allNcFiles.filter(file => file.scenario === scenario);
-        networkFileSelect.innerHTML = '<option value="">Select a network file...</option>'; 
+        networkFileSelect.innerHTML = '<option value="">Select a network file...</option>';
         filesForScenario.forEach(file => {
             const option = document.createElement('option');
             option.value = file.path;
@@ -313,11 +311,11 @@ document.addEventListener('DOMContentLoaded', function() {
             networkFileSelect.appendChild(option);
         });
     }
-    
+
     function fetchNetworkInfo(networkPath, autoLoadAfterFetch = false) {
         networkInfoContainer.style.display = 'block';
         networkInfoContainer.innerHTML = `<div class="card"><div class="card-body text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i> Loading network information...</div></div>`;
-        
+
         fetch(`/pypsa/api/network_info/${networkPath}`)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -348,7 +346,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                         </div>`;
-                    
+
                     document.getElementById('loadNetworkBtnInner').addEventListener('click', function() {
                         this.disabled = true;
                         this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Loading...';
@@ -372,11 +370,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 networkInfoContainer.innerHTML = `<div class="alert alert-danger">Error fetching network info: ${error.message}</div>`;
             });
     }
-    
+
     function displayNetworkInfo(info, suffix = '') {
         document.getElementById('networkName' + suffix).textContent = info.name || 'N/A';
-        const componentsText = info.components && Object.keys(info.components).length > 0 
-            ? Object.entries(info.components).map(([comp, count]) => `${comp}: ${count}`).join(', ') 
+        const componentsText = info.components && Object.keys(info.components).length > 0
+            ? Object.entries(info.components).map(([comp, count]) => `${comp}: ${count}`).join(', ')
             : 'N/A';
         document.getElementById('networkComponents' + suffix).textContent = componentsText;
         document.getElementById('networkCarriers' + suffix).textContent = (info.carriers && info.carriers.length > 0) ? info.carriers.join(', ') : 'N/A';
@@ -386,41 +384,82 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('networkPeriodType' + suffix).textContent = snapshots.is_multi_period ? 'Multi-period' : 'Single period';
         document.getElementById('networkOptStatus' + suffix).textContent = info.optimization_status || 'N/A';
     }
-    
+
     function refreshNetworkFiles() {
         scenarioSelect.disabled = true;
         networkFileSelect.disabled = true;
-        
-        fetch('/pypsa/api/scan_files')
+
+        fetch('/pypsa/api/available_networks') // Changed endpoint
             .then(response => response.json())
             .then(data => {
-                if (data.status === 'success') {
-                    state.allNcFiles = data.files; 
-                    updateScenariosDropdown(data.scenarios);
-                    
+                // Assuming 'data' is the direct payload which might look like:
+                // { networks: [...], total_count: ..., cache_stats: ... }
+                // OR it could be wrapped if a decorator adds a 'status' field, e.g.,
+                // { status: "success", data: { networks: [...], ... } }
+                // For this implementation, we'll check for data.networks first,
+                // then for data.data.networks if the first check fails.
+
+                let networksList = [];
+                let apiStatus = data.status; // Check if status is at the top level
+
+                if (data.networks) {
+                    networksList = data.networks;
+                } else if (data.data && data.data.networks) { // Handle cases where response is wrapped, e.g. by success_json
+                    networksList = data.data.networks;
+                    if (data.data.status) apiStatus = data.data.status; // Prefer status from inner data if available
+                }
+
+
+                if (networksList && Array.isArray(networksList)) { // Ensure networksList is an array
+                    state.allNcFiles = networksList.map(network => ({
+                        path: network.relative_path,
+                        filename: network.name,
+                        scenario: network.directory
+                    }));
+
+                    const uniqueScenarios = [...new Set(state.allNcFiles.map(file => file.scenario))].sort();
+
+                    updateScenariosDropdown(uniqueScenarios); // This function populates the scenario dropdown
+
                     scenarioSelect.disabled = false;
-                    const currentScenarioVal = scenarioSelect.value; 
-                    if (currentScenarioVal) {
-                        populateNetworkFiles(currentScenarioVal);
+                    const currentScenarioVal = scenarioSelect.value;
+
+                    // If a scenario is selected (or was pre-selected and still valid), populate its files
+                    if (currentScenarioVal && uniqueScenarios.includes(currentScenarioVal)) {
+                        populateNetworkFiles(currentScenarioVal); // This populates the network file dropdown
                         networkFileSelect.disabled = false;
                     } else {
+                        // If no scenario selected, or previous one is no longer valid
                         networkFileSelect.disabled = true;
                         networkFileSelect.innerHTML = '<option value="">Select a network file...</option>';
                     }
+
+                    // Refresh comparison list if that section is active
                     if (document.getElementById('networkComparisonSection').style.display === 'block') {
-                        loadNetworksForComparison();
+                        loadNetworksForComparison(); // This function uses state.allNcFiles
                     }
+                    // showGlobalAlert('Network files refreshed successfully.', 'success'); // Optional: provide user feedback
+                } else if (apiStatus && apiStatus !== 'success') {
+                     showGlobalAlert(`Error refreshing files: ${data.message || 'API request failed'}`, 'danger');
                 } else {
-                    showGlobalAlert(`Error refreshing files: ${data.message}`, 'danger');
+                    // This case means data.networks (and data.data.networks) was not found, and no error status was given.
+                    // Could be an unexpected response structure.
+                    state.allNcFiles = []; // Clear existing files
+                    updateScenariosDropdown([]); // Clear scenarios dropdown
+                    networkFileSelect.disabled = true;
+                    networkFileSelect.innerHTML = '<option value="">Select a network file...</option>';
+                    showGlobalAlert(`No network files found or invalid response structure from API.`, 'warning');
+                    console.error("Invalid response structure or no networks:", data);
                 }
             })
             .catch(error => {
                 showGlobalAlert(`Error refreshing files: ${error.message}`, 'danger');
+                console.error("Fetch error in refreshNetworkFiles:", error);
                 scenarioSelect.disabled = false;
-                networkFileSelect.disabled = !(!scenarioSelect.value);
+                networkFileSelect.disabled = !scenarioSelect.value;
             });
     }
-    
+
     function updateScenariosDropdown(scenarios) {
         const currentScenario = scenarioSelect.value;
         scenarioSelect.innerHTML = '<option value="">Select a scenario...</option>';
@@ -433,13 +472,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (currentScenario && scenarios.includes(currentScenario)) {
             scenarioSelect.value = currentScenario;
         } else {
-             scenarioSelect.value = ""; 
+             scenarioSelect.value = "";
         }
     }
-        
+
     function loadNetworkForAnalysis(networkPath, networkInfoFull) {
         state.currentNetworkPath = networkPath;
-        state.networkInfo = networkInfoFull; 
+        state.networkInfo = networkInfoFull;
 
         document.getElementById('currentNetworkName').textContent = networkInfoFull.name;
         analysisDashboard.style.display = 'block';
@@ -447,14 +486,14 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('networkComparisonSection').style.display = 'none';
 
         const loadBtnInner = document.getElementById('loadNetworkBtnInner');
-        if (loadBtnInner) { 
+        if (loadBtnInner) {
             loadBtnInner.disabled = false;
             loadBtnInner.innerHTML = '<i class="fas fa-chart-line me-1"></i> Load Network for Analysis';
         }
-        
+
         setupPeriodControls(networkInfoFull);
-        setupDateFilter(networkInfoFull); 
-        
+        setupDateFilter(networkInfoFull);
+
         showLoadingIndicatorsForDashboard();
         reloadAllData(networkPath)
             .then(() => {
@@ -467,45 +506,45 @@ document.addEventListener('DOMContentLoaded', function() {
                  hideLoadingIndicatorsForDashboard();
             });
     }
-    
+
     function setupPeriodControls(networkInfoFull) {
         state.isMultiPeriod = networkInfoFull.snapshots.is_multi_period;
         state.periods = networkInfoFull.periods || [];
-        
+
         if (state.isMultiPeriod && state.periods.length > 0) {
-            periodControlContainer.style.display = 'flex'; 
+            periodControlContainer.style.display = 'flex';
             periodSelect.innerHTML = '';
-            state.periods.forEach(periodVal => { 
+            state.periods.forEach(periodVal => {
                 const option = document.createElement('option');
                 option.value = periodVal;
                 option.textContent = `Period ${periodVal}`;
                 periodSelect.appendChild(option);
             });
-            state.currentPeriod = state.periods[0]; 
+            state.currentPeriod = state.periods[0];
             periodSelect.value = state.currentPeriod;
             extractPeriodBtn.style.display = 'inline-block';
         } else {
             periodControlContainer.style.display = 'none';
-            state.currentPeriod = null; 
+            state.currentPeriod = null;
             extractPeriodBtn.style.display = 'none';
         }
     }
-    
+
     function setupDateFilter(networkInfoFull) {
         const snapshotsInfo = networkInfoFull.snapshots;
-        if (snapshotsInfo && snapshotsInfo.start && snapshotsInfo.end && 
+        if (snapshotsInfo && snapshotsInfo.start && snapshotsInfo.end &&
             (String(snapshotsInfo.start).includes('T') || String(snapshotsInfo.start).includes(' ') || String(snapshotsInfo.start).match(/^\d{4}-\d{2}-\d{2}$/))) {
-            
-            dateFilterContainer.style.display = 'flex'; 
+
+            dateFilterContainer.style.display = 'flex';
 
             const startDateStr = String(snapshotsInfo.start).split(/[T ]/)[0];
             const endDateStr = String(snapshotsInfo.end).split(/[T ]/)[0];
-            
+
             startDateInput.min = startDateStr;
             startDateInput.max = endDateStr;
             endDateInput.min = startDateStr;
             endDateInput.max = endDateStr;
-            
+
             startDateInput.value = startDateStr;
             endDateInput.value = endDateStr;
             state.startDate = startDateStr;
@@ -515,10 +554,10 @@ document.addEventListener('DOMContentLoaded', function() {
             state.startDate = null;
             state.endDate = null;
         }
-        resolutionSelectEl.value = '1H'; 
+        resolutionSelectEl.value = '1H';
         state.resolution = '1H';
     }
-    
+
     function extractPeriod(networkPath, periodToExtract) {
         fetch(`/pypsa/api/extract_period/${networkPath}/${periodToExtract}`)
             .then(response => response.json())
@@ -531,7 +570,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const modalEl = document.getElementById('periodExtractionModal');
                     const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
                     modal.show();
-                    refreshNetworkFiles(); 
+                    refreshNetworkFiles();
                 } else {
                     showGlobalAlert(`Error extracting period: ${data.message}`, 'danger');
                 }
@@ -542,12 +581,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 showGlobalAlert(`Error extracting period: ${error.message}`, 'danger');
             });
     }
-    
-    async function reloadAllData(networkPath) { 
+
+    async function reloadAllData(networkPath) {
         try {
             state.dispatchData = null; state.capacityData = null; state.newCapacityAdditionsData = null; state.metricsData = null;
             state.storageData = null; state.emissionsData = null; state.pricesData = null;
-            state.networkFlowData = null; 
+            state.networkFlowData = null;
 
             await Promise.all([
                 fetchDispatchData(networkPath),
@@ -559,13 +598,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 fetchPricesData(networkPath),
                 fetchNetworkFlowData(networkPath)
             ]);
-            
-            updateAllTabs(); 
+
+            updateAllTabs();
             return true;
         } catch (error) {
             console.error("Error in reloadAllData:", error);
             showGlobalAlert(`Error loading data: ${error.message}`, 'danger');
-            throw error; 
+            throw error;
         }
     }
 
@@ -586,7 +625,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (state.currentPeriod) {
             params.append('period', state.currentPeriod);
         }
-        
+
         if (queryParams.hasOwnProperty('start_date') && state.startDate) {
             params.append('start_date', state.startDate);
         }
@@ -603,35 +642,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 params.append(key, queryParams[key]);
             }
         }
-        
+
         const queryString = params.toString();
         if (queryString) {
             url += `?${queryString}`;
         }
         return url;
     }
-    
+
     async function fetchData(endpoint, processDataCallback) {
         try {
             const response = await fetch(endpoint);
-            if (!response.ok) { 
+            if (!response.ok) {
                  const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
                  throw new Error(errorData.details || errorData.message || `HTTP error! status: ${response.status}`);
             }
             const data = await response.json();
 
             if (data.status === 'success') {
-                if (data.colors) { 
+                if (data.colors) {
                     Object.assign(state.colorPalette, data.colors);
                 }
-                processDataCallback(data); 
-                return data; 
+                processDataCallback(data);
+                return data;
             } else {
                 throw new Error(data.details || data.message || 'API returned non-success status without a message.');
             }
         } catch (error) {
             console.error(`Error fetching ${endpoint}:`, error);
-            throw error; 
+            throw error;
         }
     }
 
@@ -640,7 +679,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const queryParams = { start_date: true, end_date: true, resolution: true };
         const url = buildApiUrl(`/pypsa/api/dispatch_data/${networkPath}`, queryParams);
         return fetchData(url, (data) => {
-            state.dispatchData = data.dispatch_data_data; 
+            state.dispatchData = data.dispatch_data_data;
             if (data.colors) Object.assign(state.colorPalette, data.colors);
         });
     }
@@ -648,7 +687,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function fetchCapacityData(networkPath, attribute = 'p_nom_opt') {
         const url = buildApiUrl(`/pypsa/api/capacity_data/${networkPath}`, { attribute });
         return fetchData(url, (data) => {
-            state.capacityData = data.carrier_capacity_data; 
+            state.capacityData = data.carrier_capacity_data;
             if (data.colors) Object.assign(state.colorPalette, data.colors);
         });
     }
@@ -665,7 +704,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const queryParams = { start_date: true, end_date: true };
         const url = buildApiUrl(`/pypsa/api/metrics_data/${networkPath}`, queryParams);
         return fetchData(url, (data) => {
-            state.metricsData = data.combined_metrics_extractor_data; 
+            state.metricsData = data.combined_metrics_extractor_data;
             if (data.colors) Object.assign(state.colorPalette, data.colors);
         });
     }
@@ -692,12 +731,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const queryParams = { start_date: true, end_date: true, resolution: true };
         const url = buildApiUrl(`/pypsa/api/prices_data/${networkPath}`, queryParams);
         return fetchData(url, (data) => {
-            state.pricesData = data.extract_api_prices_data_data; 
+            state.pricesData = data.extract_api_prices_data_data;
         });
     }
 
     async function fetchNetworkFlowData(networkPath) {
-        const queryParams = { start_date: true, end_date: true }; 
+        const queryParams = { start_date: true, end_date: true };
         const url = buildApiUrl(`/pypsa/api/network_flow/${networkPath}`, queryParams);
         return fetchData(url, (data) => {
             state.networkFlowData = data.extract_api_network_flow_data;
@@ -708,10 +747,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // =====================
     // Update Tab Functions
     // =====================
-    
+
     function updateDispatchTab() {
         const plotContainer = document.getElementById('dispatchStackPlot');
-        hideLoadingIndicators(['dispatchStackPlot', 'dailyProfilePlot', 'loadDurationPlot']); 
+        hideLoadingIndicators(['dispatchStackPlot', 'dailyProfilePlot', 'loadDurationPlot']);
 
         if (!state.dispatchData || !state.dispatchData.timestamps || state.dispatchData.timestamps.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No dispatch data available for selected criteria.</div>';
@@ -723,20 +762,20 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('minLoadValue').textContent = '-';
             return;
         }
-        
+
         createDispatchStackPlot();
         createDailyProfilePlot();
         createLoadDurationCurve();
         updateGenerationSummaryTable();
         updateLoadStatistics();
     }
-    
+
     function updateCapacityTab() {
         const plotContainerCarrier = document.getElementById('capacityByCarrierPlot');
         const plotContainerRegion = document.getElementById('capacityByRegionPlot');
         hideLoadingIndicators(['capacityByCarrierPlot', 'capacityByRegionPlot']);
 
-        let hasTotalCapacityData = state.capacityData && 
+        let hasTotalCapacityData = state.capacityData &&
                                    ((state.capacityData.by_carrier && state.capacityData.by_carrier.length > 0) ||
                                     (state.capacityData.by_region && state.capacityData.by_region.length > 0));
 
@@ -749,10 +788,10 @@ document.addEventListener('DOMContentLoaded', function() {
             createCapacityByRegionPlot();
             updateCapacityTable();
         }
-        
+
         updateNewCapacityAdditionsVisuals();
     }
-    
+
     function updateNewCapacityAdditionsVisuals() {
         const plotContainerNewAdditions = document.getElementById('newCapacityAdditionsPlot');
         hideLoadingIndicators(['newCapacityAdditionsPlot']);
@@ -776,13 +815,13 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTable('curtailmentTable');
             return;
         }
-        
+
         createCUFPlot();
         createCurtailmentPlot();
         updateCUFTable();
         updateCurtailmentTable();
     }
-    
+
     function updateStorageTab() {
         hideLoadingIndicators(['socPlot', 'storageUtilizationPlot']);
 
@@ -792,12 +831,12 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTable('storageUtilizationTable');
             return;
         }
-        
+
         createSOCPlot();
         createStorageUtilizationPlot();
         updateStorageUtilizationTable();
     }
-    
+
     function updateEmissionsTab() {
         hideLoadingIndicators(['emissionsByCarrierPlot']);
         const totalValEl =  document.getElementById('totalEmissionsValue');
@@ -810,12 +849,12 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTable('emissionsTable');
             return;
         }
-        
+
         updateEmissionsValues();
         createEmissionsByCarrierPlot();
         updateEmissionsTable();
     }
-    
+
     function updatePricesTab() {
         const priceDataContainer = document.getElementById('priceDataContainer');
         const noPriceDataContainer = document.getElementById('noPriceDataContainer');
@@ -829,12 +868,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         priceDataContainer.style.display = 'block';
         noPriceDataContainer.style.display = 'none';
-        
+
         createAvgPriceByBusPlot();
         createPriceDurationCurve();
         updatePriceTable();
     }
-    
+
     function updateNetworkFlowTab() {
         hideLoadingIndicators(['lineLoadingPlot']);
         if (!state.networkFlowData || ((!state.networkFlowData.losses || state.networkFlowData.losses.length === 0) && (!state.networkFlowData.line_loading || state.networkFlowData.line_loading.length === 0))) {
@@ -844,7 +883,7 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTable('lineLoadingTable');
             return;
         }
-        
+
         updateLossesValues();
         createLineLoadingPlot();
         updateLineLoadingTable();
@@ -867,29 +906,29 @@ document.addEventListener('DOMContentLoaded', function() {
     // =====================
     // Chart Creation Functions
     // =====================
-    
+
     function createDispatchStackPlot() {
         const plotContainerId = 'dispatchStackPlot';
         const plotContainer = document.getElementById(plotContainerId);
-        plotContainer.innerHTML = ''; 
-    
+        plotContainer.innerHTML = '';
+
         const { generation, load, storage, store, timestamps } = state.dispatchData;
-    
+
         if (!timestamps || timestamps.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No timestamp data available for dispatch.</div>';
             return;
         }
-    
+
         const traces = [];
-        const xValues = timestamps.map(ts => new Date(ts)); 
-    
+        const xValues = timestamps.map(ts => new Date(ts));
+
         if (generation && generation.length > 0) {
             const firstGenRecord = generation[0];
-            const carriers = Object.keys(firstGenRecord).filter(key => key !== 'index' && key !== 'timestamp' && key !== 'level_0' && !key.startsWith('level_') && key !== 'Snapshot'); 
-            
+            const carriers = Object.keys(firstGenRecord).filter(key => key !== 'index' && key !== 'timestamp' && key !== 'level_0' && !key.startsWith('level_') && key !== 'Snapshot');
+
             carriers.forEach(carrier => {
                 const yValues = generation.map(item => item[carrier] || 0);
-                if (yValues.some(v => Math.abs(v) > 1e-6)) { 
+                if (yValues.some(v => Math.abs(v) > 1e-6)) {
                     traces.push({
                         x: xValues, y: yValues, name: carrier, stackgroup: 'positive_generation',
                         fillcolor: state.colorPalette[carrier] || getRandomColor(),
@@ -899,7 +938,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-    
+
         const combinedStorageData = [];
         if (storage && storage.length > 0) {
             storage.forEach(s => combinedStorageData.push({...s, _source: 'storage'}));
@@ -918,7 +957,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const yValues = combinedStorageData.map(item => item[col] || 0);
                  if (yValues.some(v => v > 1e-6)) {
                     traces.push({
-                        x: xValues, y: yValues, name: col, stackgroup: 'positive_storage', 
+                        x: xValues, y: yValues, name: col, stackgroup: 'positive_storage',
                         fillcolor: state.colorPalette[col.replace(' Discharge', '')] || state.colorPalette[col] || getRandomColor(),
                         line: { width: 0 }, fill: 'tonexty',
                         hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>${col}: %{y:,.1f} MW<extra></extra>`
@@ -926,18 +965,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             chargeCols.forEach(col => {
-                const yValues = combinedStorageData.map(item => item[col] || 0); 
-                 if (yValues.some(v => v < -1e-6)) { 
+                const yValues = combinedStorageData.map(item => item[col] || 0);
+                 if (yValues.some(v => v < -1e-6)) {
                     traces.push({
-                        x: xValues, y: yValues, name: col, stackgroup: 'negative_storage', 
+                        x: xValues, y: yValues, name: col, stackgroup: 'negative_storage',
                         fillcolor: state.colorPalette[col.replace(' Charge', '')] || state.colorPalette[col] || getRandomColor(),
-                        line: { width: 0 }, fill: 'tonexty', 
+                        line: { width: 0 }, fill: 'tonexty',
                         hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>${col}: %{y:,.1f} MW<extra></extra>`
                     });
                 }
             });
         }
-    
+
         if (load && load.length > 0) {
             const loadValues = load.map(item => item.load);
             traces.push({
@@ -946,14 +985,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 hovertemplate: `%{x|%Y-%m-%d %H:%M}<br>Load: %{y:,.1f} MW<extra></extra>`
             });
         }
-    
+
         const layout = {
             title: `Generation Dispatch${state.resolution ? ` (${state.resolution} resolution)` : ''}`,
-            xaxis: { title: 'Time', automargin: true }, 
+            xaxis: { title: 'Time', automargin: true },
             yaxis: { title: 'Power (MW)', zeroline: true, zerolinecolor: 'grey', zerolinewidth: 1},
-            hovermode: 'x unified', 
+            hovermode: 'x unified',
             legend: { orientation: 'h', y: -0.3, yanchor: 'bottom', x:0.5, xanchor:'center', traceorder: 'reversed' },
-            height: 600, 
+            height: 600,
             margin: { l: 70, r: 30, t: 50, b: 150 },
         };
         if (typeof Plotly !== 'undefined') Plotly.newPlot(plotContainerId, traces, layout, { responsive: true });
@@ -963,22 +1002,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const plotContainerId = 'dailyProfilePlot';
         const plotContainer = document.getElementById(plotContainerId);
         plotContainer.innerHTML = '';
-    
+
         if (!state.dispatchData || !state.dispatchData.timestamps || state.dispatchData.timestamps.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No data for daily profile.</div>';
             return;
         }
-    
+
         const { generation, load, storage, store, timestamps } = state.dispatchData;
-        const hourlyAverages = Array.from({ length: 24 }, () => ({ counts: 0 })); 
-    
+        const hourlyAverages = Array.from({ length: 24 }, () => ({ counts: 0 }));
+
         const allComponentNames = new Set();
         if (generation && generation.length > 0) Object.keys(generation[0]).filter(k => k !=='timestamp' && k !=='index' && k !== 'level_0' && !k.startsWith('level_') && k !== 'Snapshot').forEach(k => allComponentNames.add(k));
         if (load && load.length > 0) allComponentNames.add('Load');
         [storage, store].forEach(s_data => {
             if (s_data && s_data.length > 0) Object.keys(s_data[0]).filter(k => k !=='timestamp' && k !=='index' && k !== 'level_0' && !k.startsWith('level_') && k !== 'Snapshot').forEach(k => allComponentNames.add(k));
         });
-    
+
         allComponentNames.forEach(name => hourlyAverages.forEach(h => h[name] = 0));
 
         timestamps.forEach((ts, i) => {
@@ -997,15 +1036,15 @@ document.addEventListener('DOMContentLoaded', function() {
             [storage, store].forEach(sourceData => {
                 if (sourceData && sourceData[i]) {
                     Object.keys(sourceData[i]).filter(k => k !=='timestamp' && k !=='index' && k !== 'level_0' && !k.startsWith('level_') && k !== 'Snapshot').forEach(key => {
-                        hourlyAverages[hour][key] += (sourceData[i][key] || 0); 
+                        hourlyAverages[hour][key] += (sourceData[i][key] || 0);
                     });
                 }
             });
         });
-    
+
         const traces = [];
         const xHours = Array.from({ length: 24 }, (_, i) => i);
-    
+
         allComponentNames.forEach(compName => {
             const yValues = xHours.map(hour => hourlyAverages[hour][compName] / (hourlyAverages[hour].counts || 1));
             const isLoad = compName === 'Load';
@@ -1020,8 +1059,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 } else {
                     traces.push({
-                        x: xHours, y: yValues, name: compName, 
-                        stackgroup: isCharge ? 'negative_components_daily' : 'positive_components_daily', 
+                        x: xHours, y: yValues, name: compName,
+                        stackgroup: isCharge ? 'negative_components_daily' : 'positive_components_daily',
                         fillcolor: state.colorPalette[compName.replace(' Charge','').replace(' Discharge','')] || state.colorPalette[compName] || getRandomColor(),
                         line: { width: 0 }, fill: 'tonexty',
                         hovertemplate: `Hour %{x}<br>Avg ${compName}: %{y:,.1f} MW<extra></extra>`
@@ -1029,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
-            
+
         const layout = {
             title: 'Average Daily Profile',
             xaxis: { title: 'Hour of Day', tickmode: 'linear', tick0: 0, dtick: 2, automargin: true },
@@ -1044,20 +1083,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const plotContainerId = 'loadDurationPlot';
         const plotContainer = document.getElementById(plotContainerId);
         plotContainer.innerHTML = '';
-    
+
         if (!state.dispatchData || !state.dispatchData.load || state.dispatchData.load.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No load data for duration curve.</div>';
             return;
         }
-    
+
         const loadValues = state.dispatchData.load.map(item => item.load).filter(val => val !== null && !isNaN(val));
         if (loadValues.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">Load data is empty or invalid.</div>';
             return;
         }
-        loadValues.sort((a, b) => b - a); 
-        const xValues = loadValues.map((_, i) => (i / (loadValues.length -1 + 1e-9)) * 100); 
-    
+        loadValues.sort((a, b) => b - a);
+        const xValues = loadValues.map((_, i) => (i / (loadValues.length -1 + 1e-9)) * 100);
+
         const trace = {
             x: xValues, y: loadValues, type: 'scatter', fill: 'tozeroy',
             fillcolor: 'rgba(0,128,255,0.2)', line: { color: 'rgba(0,128,255,0.8)' },
@@ -1073,19 +1112,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateGenerationSummaryTable() {
         const tbody = document.getElementById('generationSummaryTable').querySelector('tbody');
-        tbody.innerHTML = ''; 
-    
+        tbody.innerHTML = '';
+
         if (!state.dispatchData || !state.dispatchData.generation || state.dispatchData.generation.length === 0) {
             tbody.innerHTML = '<tr><td colspan="3" class="text-center">No generation data.</td></tr>';
             return;
         }
-    
+
         const generationEnergyByCarrier = {};
-        const generationData = state.dispatchData.generation; 
+        const generationData = state.dispatchData.generation;
         const firstGenRecord = generationData[0];
         const carriers = Object.keys(firstGenRecord).filter(key => key !== 'index' && key !== 'timestamp' && key !== 'level_0' && !key.startsWith('level_') && key !== 'Snapshot');
-        
-        let intervalHours = 1; 
+
+        let intervalHours = 1;
         if (state.resolution) {
             if (state.resolution.includes('H')) intervalHours = parseFloat(state.resolution.replace('H',''));
             else if (state.resolution === '1D') intervalHours = 24;
@@ -1095,13 +1134,13 @@ document.addEventListener('DOMContentLoaded', function() {
         carriers.forEach(carrier => {
             generationEnergyByCarrier[carrier] = generationData.reduce((sum, item) => sum + (item[carrier] || 0), 0) * intervalHours;
         });
-    
+
         const sortedCarriers = Object.entries(generationEnergyByCarrier)
             .filter(([_, energy]) => Math.abs(energy) > 1e-3) // Include negative generation if any (e.g. some storage models)
             .sort(([, a], [, b]) => b - a);
-    
+
         const totalGenerationEnergy = sortedCarriers.reduce((sum, [, energy]) => sum + energy, 0);
-    
+
         sortedCarriers.forEach(([carrier, energy]) => {
             const percentage = totalGenerationEnergy !== 0 ? (energy / totalGenerationEnergy) * 100 : 0;
             const row = tbody.insertRow();
@@ -1111,7 +1150,7 @@ document.addEventListener('DOMContentLoaded', function() {
             row.insertCell().textContent = percentage.toLocaleString(undefined, { maximumFractionDigits: 1 }) + '%';
             row.cells[2].className = 'text-end';
         });
-    
+
         if (Math.abs(totalGenerationEnergy) > 1e-3) {
             const totalRow = tbody.insertRow();
             totalRow.classList.add('table-active', 'fw-bold');
@@ -1130,7 +1169,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('minLoadValue').textContent = '-';
             return;
         }
-        const loadPowerValues = state.dispatchData.load.map(item => item.load); 
+        const loadPowerValues = state.dispatchData.load.map(item => item.load);
         let intervalHours = 1;
         if (state.resolution) {
             if (state.resolution.includes('H')) intervalHours = parseFloat(state.resolution.replace('H',''));
@@ -1138,10 +1177,10 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (state.resolution === '1W') intervalHours = 24 * 7;
         }
 
-        const totalLoadEnergy = loadPowerValues.reduce((sum, loadP) => sum + (loadP * intervalHours), 0); 
-        const peakLoadPower = Math.max(...loadPowerValues); 
-        const minLoadPower = Math.min(...loadPowerValues); 
-    
+        const totalLoadEnergy = loadPowerValues.reduce((sum, loadP) => sum + (loadP * intervalHours), 0);
+        const peakLoadPower = Math.max(...loadPowerValues);
+        const minLoadPower = Math.min(...loadPowerValues);
+
         document.getElementById('totalLoadValue').textContent = totalLoadEnergy.toLocaleString(undefined, { maximumFractionDigits: 1 });
         document.getElementById('peakLoadValue').textContent = peakLoadPower.toLocaleString(undefined, { maximumFractionDigits: 1 });
         document.getElementById('minLoadValue').textContent = minLoadPower.toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -1151,12 +1190,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const plotContainerId = 'capacityByCarrierPlot';
         const plotContainer = document.getElementById(plotContainerId);
         plotContainer.innerHTML = '';
-    
+
         if (!state.capacityData || !state.capacityData.by_carrier || state.capacityData.by_carrier.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No capacity by carrier data.</div>';
             return;
         }
-    
+
         const capacityData = [...state.capacityData.by_carrier].sort((a, b) => b.Capacity - a.Capacity);
         const attribute = document.getElementById('capacityAttributeSelect').value;
         const unit = capacityData.length > 0 && capacityData[0].Unit ? capacityData[0].Unit : (attribute.startsWith('e_nom') ? 'MWh' : 'MW');
@@ -1182,12 +1221,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const plotContainerId = 'capacityByRegionPlot';
         const plotContainer = document.getElementById(plotContainerId);
         plotContainer.innerHTML = '';
-    
+
         if (!state.capacityData || !state.capacityData.by_region || state.capacityData.by_region.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No capacity by region data.</div>';
             return;
         }
-    
+
         const capacityData = [...state.capacityData.by_region].sort((a, b) => b.Capacity - a.Capacity);
         const attribute = document.getElementById('capacityAttributeSelect').value;
         const unit = capacityData.length > 0 && capacityData[0].Unit ? capacityData[0].Unit : (attribute.startsWith('e_nom') ? 'MWh' : 'MW');
@@ -1221,19 +1260,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const capacityData = [...state.capacityData.by_carrier].sort((a, b) => b.Capacity - a.Capacity);
         let totalCapacity = 0;
-    
+
         capacityData.forEach(item => {
-            const unit = item.Unit || defaultUnit; 
+            const unit = item.Unit || defaultUnit;
             const row = tbody.insertRow();
             row.insertCell().textContent = item.Carrier;
             row.insertCell().textContent = item.Capacity.toLocaleString(undefined, { maximumFractionDigits: 1 });
             row.cells[1].className = 'text-end';
-            row.insertCell().textContent = unit; 
+            row.insertCell().textContent = unit;
             totalCapacity += item.Capacity;
         });
-    
+
         if (totalCapacity > 0 && capacityData.length > 0) {
-            const overallUnit = capacityData[0].Unit || defaultUnit; 
+            const overallUnit = capacityData[0].Unit || defaultUnit;
             const totalRow = tbody.insertRow();
             totalRow.classList.add('table-active', 'fw-bold');
             totalRow.insertCell().textContent = 'Total';
@@ -1247,12 +1286,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const plotContainerId = 'newCapacityAdditionsPlot';
         const plotContainer = document.getElementById(plotContainerId);
         plotContainer.innerHTML = '';
-    
+
         if (!state.newCapacityAdditionsData || !state.newCapacityAdditionsData.new_additions || state.newCapacityAdditionsData.new_additions.length === 0) {
             plotContainer.innerHTML = '<div class="alert alert-info m-3">No new capacity addition data to plot.</div>';
             return;
         }
-    
+
         const additionsData = [...state.newCapacityAdditionsData.new_additions].sort((a, b) => b.New_Capacity - a.New_Capacity);
         const method = newCapacityMethodSelect.options[newCapacityMethodSelect.selectedIndex].text; // Get text of selected option
         const unit = additionsData.length > 0 && additionsData[0].Unit ? additionsData[0].Unit : 'MW/MWh';
@@ -1277,7 +1316,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateNewCapacityAdditionsTable() {
         const tbody = document.getElementById('newCapacityAdditionsTable').querySelector('tbody');
         tbody.innerHTML = '';
-        
+
         if (!state.newCapacityAdditionsData || !state.newCapacityAdditionsData.new_additions || state.newCapacityAdditionsData.new_additions.length === 0) {
             tbody.innerHTML = '<tr><td colspan="3" class="text-center">No new capacity addition data.</td></tr>';
             return;
@@ -1285,7 +1324,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const additionsData = [...state.newCapacityAdditionsData.new_additions].sort((a, b) => b.New_Capacity - a.New_Capacity);
         let totalNewCapacity = 0;
         const defaultUnit = 'MW/MWh';
-    
+
         additionsData.forEach(item => {
             const unit = item.Unit || defaultUnit;
             const row = tbody.insertRow();
@@ -1295,7 +1334,7 @@ document.addEventListener('DOMContentLoaded', function() {
             row.insertCell().textContent = unit;
             totalNewCapacity += item.New_Capacity;
         });
-    
+
         if (totalNewCapacity > 0 && additionsData.length > 0) {
             const overallUnit = additionsData[0].Unit || defaultUnit;
             const totalRow = tbody.insertRow();
@@ -1319,7 +1358,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const cufData = [...state.metricsData.cuf].sort((a, b) => b.CUF - a.CUF);
         const trace = {
             x: cufData.map(item => item.Carrier),
-            y: cufData.map(item => item.CUF * 100), 
+            y: cufData.map(item => item.CUF * 100),
             type: 'bar',
             marker: { color: cufData.map(item => state.colorPalette[item.Carrier] || getRandomColor()) },
             hovertemplate: `%{x}<br>CUF: %{y:.1f}%<extra></extra>`
@@ -1400,9 +1439,9 @@ document.addEventListener('DOMContentLoaded', function() {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No SoC data.</div>';
             return;
         }
-        const socDataRecords = state.storageData.soc; 
+        const socDataRecords = state.storageData.soc;
         const timestamps = state.storageData.timestamps.map(ts => new Date(ts));
-        const storageTypes = state.storageData.storage_types || []; 
+        const storageTypes = state.storageData.storage_types || [];
         const traces = [];
 
         storageTypes.forEach(type => {
@@ -1439,13 +1478,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const trace1 = {
             x: storageStats.map(item => item.Storage_Type),
             y: storageStats.map(item => item.Charge_MWh),
-            name: 'Charge (MWh)', type: 'bar', 
+            name: 'Charge (MWh)', type: 'bar',
             marker: { color: state.colorPalette['Storage Charge'] || state.colorPalette['Store Charge'] || 'rgba(255,165,0,0.8)' }
         };
         const trace2 = {
             x: storageStats.map(item => item.Storage_Type),
             y: storageStats.map(item => item.Discharge_MWh),
-            name: 'Discharge (MWh)', type: 'bar', 
+            name: 'Discharge (MWh)', type: 'bar',
             marker: { color: state.colorPalette['Storage Discharge'] || state.colorPalette['Store Discharge'] || 'rgba(50,205,50,0.8)' }
         };
         const layout = {
@@ -1585,7 +1624,7 @@ document.addEventListener('DOMContentLoaded', function() {
             plotContainer.innerHTML = '<div class="alert alert-warning m-3">No price duration data.</div>';
             return;
         }
-        const durationCurve = state.pricesData.duration_curve; 
+        const durationCurve = state.pricesData.duration_curve;
         const unit = state.pricesData.unit || 'currency/MWh';
         const xValues = durationCurve.map((_, i) => (i / (durationCurve.length -1 + 1e-9)) * 100);
         const trace = {
@@ -1608,7 +1647,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center">No price data.</td></tr>';
             return;
         }
-        const priceData = [...state.pricesData.avg_by_bus].sort((a, b) => b.price - a.price); 
+        const priceData = [...state.pricesData.avg_by_bus].sort((a, b) => b.price - a.price);
         const unit = state.pricesData.unit || 'currency/MWh';
 
         priceData.forEach(item => {
