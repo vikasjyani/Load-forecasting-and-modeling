@@ -840,6 +840,24 @@ Interactive Electricity Demand Forecasting Analysis
                     <i class="fas fa-plus me-1"></i>Add Year
                 </button>
             </div>
+
+            <hr class="my-4"> <!-- Optional separator -->
+            <div>
+                <h6 class="mb-3"><i class="fas fa-palette me-2"></i>Color Customization</h6>
+                <p class="text-muted mb-3 small">Customize colors for sectors and models. These settings will be saved with your scenario configuration.</p>
+
+                <h7 class="mb-2 mt-3 fw-semibold">Sector Colors</h7>
+                <div id="sectorColorsConfigContent" class="color-config-grid mb-3">
+                    <!-- JS will populate this -->
+                    <p class="text-muted small">Sector color options will appear here when a scenario is loaded.</p>
+                </div>
+
+                <h7 class="mb-2 mt-3 fw-semibold">Model Colors</h7>
+                <div id="modelColorsConfigContent" class="color-config-grid">
+                    <!-- JS will populate this -->
+                    <p class="text-muted small">Model color options will appear here when a scenario is loaded.</p>
+                </div>
+            </div>
         </div>
         <div class="analysis-actions">
             <button class="btn btn-outline-secondary" id="cancelConfigBtn">Cancel</button>
@@ -911,5 +929,5 @@ Interactive Electricity Demand Forecasting Analysis
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="{{ url_for('static', filename='js/demand_visualization.js') }}"></script>
+<script src="{{ url_for('static', filename='js/demand_visualization_new.js') }}"></script>
 {% endblock %}
