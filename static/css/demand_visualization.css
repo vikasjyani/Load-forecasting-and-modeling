@@ -708,16 +708,16 @@
     .btn, .dropdown, .nav-tabs {
         display: none !important;
     }
-    
+
     .card {
         border: 1px solid #000 !important;
         box-shadow: none !important;
     }
-    
+
     .chart-container {
         break-inside: avoid;
     }
-    
+
     .table {
         font-size: 0.8rem;
     }

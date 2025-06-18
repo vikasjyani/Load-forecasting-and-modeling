@@ -2311,12 +2311,16 @@ p {
 /* ===== CONTENT AREA (from sidebar-layout.css) ===== */
 .content-area { /* Child of .main-content */
   flex: 1;
+
   width: 100%; /* from layout-fixes.css */
   max-width: 100%; /* from layout-fixes.css */
   box-sizing: border-box; /* from layout-fixes.css */
   overflow-x: hidden; /* from layout-fixes.css, kept cautiously */
   overflow-y: auto; /* existing in common.css */
   padding: var(--spacing-xl); /* existing in common.css, layout-fixes had var(--spacing-md) */
+=======
+  padding: var(--spacing-xl);
+  overflow-y: auto; /* common.css .main-content has overflow-x: hidden, this is for y-scroll */
   background: var(--neutral-50); /* Matches body, but can be overridden */
 }
 

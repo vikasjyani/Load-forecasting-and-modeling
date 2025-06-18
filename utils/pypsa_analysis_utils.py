@@ -159,7 +159,7 @@ def get_color_palette(n: pypsa.Network) -> Dict[str, str]:
     logging.debug("Generating color palette...")
     final_colors = DEFAULT_COLORS.copy()
     color_idx = 0
-    
+
     def add_color_if_new(name, existing_colors, color_idx_ref):
         if name not in existing_colors:
             matched = False
@@ -178,13 +178,13 @@ def get_color_palette(n: pypsa.Network) -> Dict[str, str]:
         carriers_df = n.carriers.copy()
         if 'nice_name' not in carriers_df.columns:
             carriers_df['nice_name'] = carriers_df.index
-        
+
         for carrier_idx, row in carriers_df.iterrows():
             carrier_name = str(carrier_idx)
             nice_name = str(row.get("nice_name", carrier_name))
-            
+
             color_in_df = row.get("color") if "color" in row and pd.notna(row.get("color")) and row.get("color") != "" else None
-            
+
             if color_in_df:
                 final_colors[nice_name] = color_in_df
                 if nice_name != carrier_name:
@@ -208,7 +208,7 @@ def get_color_palette(n: pypsa.Network) -> Dict[str, str]:
                         val = n.carriers.loc[carrier, 'nice_name']
                         if pd.notna(val):
                             nice_name = val
-                    
+
                     all_carrier_names.add(str(nice_name))
                     if str(nice_name) != str(carrier):
                         all_carrier_names.add(str(carrier))
