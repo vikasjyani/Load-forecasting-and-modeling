@@ -1,0 +1,53 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+pydantic-settings # For settings management
+python-dotenv # For .env file support
+passlib[bcrypt] # For password hashing
+python-jose[cryptography] # For JWT tokens
+python-multipart # For form data (file uploads)
+email-validator # For email validation in Pydantic models, if needed
+
+# Database (example: PostgreSQL with SQLAlchemy and async via asyncpg)
+# sqlalchemy>=2.0
+# asyncpg
+# alembic # For database migrations
+
+# HTTP client (if backend needs to call other services)
+# httpx>=0.24.0
+
+# Data processing and ML/Analysis (based on original project structure)
+pandas>=1.5.0
+numpy>=1.23.0
+scikit-learn>=1.2.0
+statsmodels>=0.13.0
+# prophet # Uncomment if Facebook Prophet is used
+# pypsa # Uncomment if PyPSA is used
+# openpyxl # For reading .xlsx files with pandas
+
+# For PDF generation (if load_profile_pdf.py is used)
+# reportlab
+
+# For plotting if done in backend (less common for FastAPI APIs, usually frontend)
+# matplotlib
+# seaborn
+
+# Other utilities that might have been used
+# redis # If using Redis for caching or task queues
+# celery # If using Celery for background tasks
+
+# Logging and Monitoring
+# structlog # Example for structured logging
+# prometheus-fastapi-instrumentator # For Prometheus metrics
+
+# Testing
+pytest
+pytest-asyncio # For async tests
+httpx # For testing API client calls
+pytest-cov # For coverage
+
+# Linters and Formatters (often in pre-commit or dev requirements)
+# flake8
+# mypy
+# black
+# isort

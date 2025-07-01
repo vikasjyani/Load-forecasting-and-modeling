@@ -1,0 +1,27 @@
+/* Styles specific to charts */
+
+.chart-container {
+  width: 100%;
+  height: 400px; /* Default height, can be overridden */
+  margin-bottom: 20px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #fff;
+}
+
+.chart-title {
+  text-align: center;
+  font-size: 1.2em;
+  margin-bottom: 10px;
+  color: #555;
+}
+
+/* Placeholder for legend styles, tooltips, etc. */
+.chart-legend {
+  /* ... */
+}
+
+.chart-tooltip {
+  /* ... */
+}

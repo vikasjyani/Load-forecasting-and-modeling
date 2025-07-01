@@ -1,0 +1,93 @@
+{
+  "name": "react-energy-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@reduxjs/toolkit": "^1.9.7",
+    "axios": "^1.6.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.18.0",
+    "chart.js": "^4.4.0", // Example charting library
+    "react-chartjs-2": "^5.2.0", // React wrapper for Chart.js
+    "date-fns": "^2.30.0" // For date formatting
+    // Add other UI libraries like Material UI, Ant Design, or headless UI components if needed
+    // e.g., "@headlessui/react": "^1.7.17",
+    // e.g., "framer-motion": "^10.16.4" for animations
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "test": "vitest"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest",
+      "eslint:recommended",
+      "plugin:react/recommended",
+      "plugin:react/jsx-runtime",
+      "plugin:react-hooks/recommended"
+    ],
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "settings": {
+      "react": {
+        "version": "18.2"
+      }
+    },
+    "plugins": [
+      "react-refresh"
+    ],
+    "rules": {
+      "react-refresh/only-export-components": [
+        "warn",
+        {
+          "allowConstantExport": true
+        }
+      ]
+    },
+    "env": {
+      "browser": true,
+      "es2021": true,
+      "jest": true,
+      "node": true
+    }
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.1.4",
+    "@testing-library/react": "^14.1.0",
+    "@testing-library/user-event": "^14.5.1",
+    "@types/react": "^18.2.37", // If using TypeScript
+    "@types/react-dom": "^18.2.15", // If using TypeScript
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16", // For Tailwind CSS
+    "eslint": "^8.53.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.4",
+    "postcss": "^8.4.31", // For Tailwind CSS
+    "tailwindcss": "^3.3.5",
+    "vite": "^5.0.0",
+    "vitest": "^0.34.6", // For testing with Vite
+    "jsdom": "^22.1.0" // For testing environment
+    // Add other dev dependencies: prettier, specific eslint plugins, etc.
+  }
+}
