@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: . # Use the current directory for the build context
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80" # Map port 8000 on the host to port 80 in the container
+    volumes:
+      - ./app:/code/app # Mount the app directory for live code reloading
+      - ./models:/code/models # Mount ML models directory if separate
+    # environment: # Optional: Add environment variables
+      # - DATABASE_URL=postgresql://user:password@db:5432/mydatabase
+      # - SECRET_KEY=mysecretkey
+    # depends_on: # Optional: If you have a database service
+      # - db
+    networks:
+      - energy_net
+
+  # frontend: # Example for React frontend service (if not served by FastAPI or CDN)
+  #   build:
+  #     context: ../react-energy-platform # Path to your React app
+  #     dockerfile: Dockerfile # Assuming you have a Dockerfile for React
+  #   ports:
+  //     - "3000:3000" # Or whatever port your React app runs on
+  #   volumes:
+  //     - ../react-energy-platform/src:/app/src # For live reloading of React source
+  #   depends_on:
+  #     - backend
+  #   networks:
+  //     - energy_net
+  #   # environment:
+  //     # - REACT_APP_API_URL=http://localhost:8000/api/v1 # Or http://backend/api/v1 if using service name
+
+  # db: # Example for a PostgreSQL database service
+  #   image: postgres:13
+  #   volumes:
+  //     - postgres_data:/var/lib/postgresql/data/
+  #   environment:
+  //     - POSTGRES_USER=user
+  //     - POSTGRES_PASSWORD=password
+  //     - POSTGRES_DB=mydatabase
+  #   ports:
+  //     - "5432:5432"
+  #   networks:
+  //     - energy_net
+
+networks:
+  energy_net:
+    driver: bridge
+
+# volumes: # Optional: Define named volumes for data persistence
+#   postgres_data:
+#     driver: local
