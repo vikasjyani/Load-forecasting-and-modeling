@@ -334,7 +334,9 @@ class DemandProjectionService:
 
             all_sector_results: List[SectorProcessingResult] = []
 
-            for i, (sec_name, sec_cfg) selected_models = sec_cfg.get('models', [])
+            for i, (sec_name, sec_cfg) in enumerate(config.sector_configs.items()): # Corrected iteration
+                sector_start_time = time.time() # Initialize sector_start_time here
+                selected_models = sec_cfg.get('models', [])
                 model_params_cfg = {}
                 if 'MLR' in selected_models: model_params_cfg['MLR'] = {'independent_vars': sec_cfg.get('independentVars', [])}
                 if 'WAM' in selected_models: model_params_cfg['WAM'] = {'window_size': int(sec_cfg.get('windowSize', 10))}
