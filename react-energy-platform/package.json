@@ -9,12 +9,9 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.18.0",
-    "chart.js": "^4.4.0", // Example charting library
-    "react-chartjs-2": "^5.2.0", // React wrapper for Chart.js
-    "date-fns": "^2.30.0" // For date formatting
-    // Add other UI libraries like Material UI, Ant Design, or headless UI components if needed
-    // e.g., "@headlessui/react": "^1.7.17",
-    // e.g., "framer-motion": "^10.16.4" for animations
+    "chart.js": "^4.4.0",
+    "react-chartjs-2": "^5.2.0",
+    "date-fns": "^2.30.0"
   },
   "scripts": {
     "dev": "vite",
@@ -75,19 +72,18 @@
     "@testing-library/jest-dom": "^6.1.4",
     "@testing-library/react": "^14.1.0",
     "@testing-library/user-event": "^14.5.1",
-    "@types/react": "^18.2.37", // If using TypeScript
-    "@types/react-dom": "^18.2.15", // If using TypeScript
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
     "@vitejs/plugin-react": "^4.2.0",
-    "autoprefixer": "^10.4.16", // For Tailwind CSS
+    "autoprefixer": "^10.4.16",
     "eslint": "^8.53.0",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
-    "postcss": "^8.4.31", // For Tailwind CSS
+    "postcss": "^8.4.31",
     "tailwindcss": "^3.3.5",
     "vite": "^5.0.0",
-    "vitest": "^0.34.6", // For testing with Vite
-    "jsdom": "^22.1.0" // For testing environment
-    // Add other dev dependencies: prettier, specific eslint plugins, etc.
+    "vitest": "^0.34.6",
+    "jsdom": "^22.1.0"
   }
 }
