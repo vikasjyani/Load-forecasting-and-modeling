@@ -8,6 +8,8 @@ from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Path as FastAPIPath
 from pydantic import BaseModel, Field # For request/response models
 from pathlib import Path
+from datetime import datetime # Added for ProfileFilterPayload
+import tempfile # Added for export_analysis_api placeholder
 
 # Assuming LoadProfileAnalysisService is adapted and available for DI.
 try:
