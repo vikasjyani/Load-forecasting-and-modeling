@@ -7,9 +7,12 @@ HTML rendering routes are typically handled by a separate frontend or specific F
 import logging
 import time # For performance timing if needed
 from typing import Dict, Any, List, Optional
+from pathlib import Path # Added Path import
 from fastapi import APIRouter, Depends, Query, HTTPException, Request, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field # Added Field
 import asyncio # For concurrent operations if any
+from fastapi.responses import JSONResponse # Added JSONResponse
+from datetime import datetime # Added datetime for health check
 
 # Assuming CoreService is adapted for FastAPI and available for DI.
 # For now, using a placeholder if not fully refactored.
@@ -36,16 +39,13 @@ except ImportError:
         async def get_notifications(self) -> List[Dict]: return [{"id": 1, "message": "Mock notification"}]
 
 # Custom error handlers are registered globally, but custom exceptions can be raised.
-from app.utils.error_handlers import ProcessingError, ResourceNotFoundError
+from app.utils.error_handlers import ProcessingError, ResourceNotFoundError # Assuming these are defined
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Dependency for CoreService ---
-# This would typically involve settings or other dependencies for CoreService.
 async def get_core_service():
-    # project_path = None # Or determine from request context/headers if project-specific
-    # return CoreService(project_path=project_path) # If CoreService needs project_path
     return CoreService()
 
 
@@ -56,42 +56,23 @@ class CacheClearPayload(BaseModel):
 
 # --- API Endpoints (Adapted from Flask blueprint) ---
 
-# Note: HTML rendering routes like home, user_guide, about, settings, tutorials
-# are omitted as this is an API. They would be handled by a separate frontend
-# or specific FastAPI HTMLResponse endpoints if FastAPI serves HTML.
-
 @router.get("/dashboard_data", summary="Get Dashboard Data")
 async def get_dashboard_data_api(
     include_details: bool = Query(False, description="Whether to include detailed information"),
     service: CoreService = Depends(get_core_service)
 ):
-    """Retrieves data for the main dashboard."""
     try:
-        # In FastAPI, request context like start_time for performance is usually handled by middleware
-        # request.state.start_time # Example if middleware sets it
         data = await service.get_dashboard_data(include_details=include_details)
-        return data # FastAPI automatically converts dict to JSONResponse
+        return data
     except Exception as e:
         logger.exception("Error in get_dashboard_data_api")
         raise HTTPException(status_code=500, detail=f"Failed to get dashboard data: {str(e)}")
-
-# Streaming example - if dashboard data can be streamed
-# @router.get("/dashboard_stream")
-# async def get_dashboard_stream_api(service: CoreService = Depends(get_core_service)):
-#     async def stream_generator():
-#         yield '{"status": "success", "data": {'
-#         basic_data = await service.get_essential_home_data_equivalent() # Adapt this
-#         yield f'"basic": {json.dumps(basic_data)},'
-#         # ... stream other parts ...
-#         yield '}}'
-#     return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
 
 @router.get("/project_status", summary="Get Current Project Status")
 async def get_project_status_api(
     include_details: bool = Query(False),
     service: CoreService = Depends(get_core_service)
 ):
-    """Retrieves the status of the currently active project (if any)."""
     try:
         status = await service.get_project_status(include_details=include_details)
         return status
@@ -102,7 +83,6 @@ async def get_project_status_api(
 
 @router.get("/system_info", summary="Get System Information")
 async def get_system_info_api(service: CoreService = Depends(get_core_service)):
-    """Retrieves general system information and application status."""
     try:
         info = await service.get_system_info()
         return info
@@ -113,10 +93,9 @@ async def get_system_info_api(service: CoreService = Depends(get_core_service)):
 
 @router.get("/health", summary="Application Health Check")
 async def health_check_api(service: CoreService = Depends(get_core_service)):
-    """Performs a health check of the application and its critical components."""
     try:
         health = await service.get_health_status()
-        status_code = 200 if health.get('status') == 'healthy' else 503 # Service Unavailable
+        status_code = 200 if health.get('status') == 'healthy' else 503
         return JSONResponse(content=health, status_code=status_code)
     except Exception as e:
         logger.exception("Error in health_check_api")
@@ -129,7 +108,6 @@ async def get_recent_activities_api(
     activity_type: str = Query("all"),
     service: CoreService = Depends(get_core_service)
 ):
-    """Retrieves a list of recent user or system activities."""
     try:
         activities = await service.get_recent_activities(limit=limit, activity_type=activity_type)
         return {"activities": activities, "limit": limit, "type_filter": activity_type}
@@ -142,7 +120,6 @@ async def clear_cache_api(
     payload: CacheClearPayload,
     service: CoreService = Depends(get_core_service)
 ):
-    """Clears specified application caches (e.g., data cache, feature flags)."""
     try:
         cleared = await service.clear_caches(cache_types=payload.cache_types)
         return {"message": "Caches cleared successfully.", "cleared_caches": cleared}
@@ -152,7 +129,6 @@ async def clear_cache_api(
 
 @router.get("/feature_flags", summary="Get UI Feature Flags")
 async def get_feature_flags_api(service: CoreService = Depends(get_core_service)):
-    """Retrieves feature flags relevant for the UI."""
     try:
         flags = await service.get_feature_flags()
         return flags
