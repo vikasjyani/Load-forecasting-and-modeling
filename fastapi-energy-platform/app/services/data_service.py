@@ -74,12 +74,17 @@ class DataService:
         try:
             # In FastAPI, UploadFile has a file-like interface (SpooledTemporaryFile)
             # We read from it and write to the destination.
-            # For large files, consider streaming in chunks.
-            with open(file_path, "wb") as buffer:
-                content = await file.read() # Read the entire file content
-                buffer.write(content)
+            content = await file.read() # Read the entire file content
 
-            file_info = get_file_info(file_path) # Assuming get_file_info works with Path objects
+            # Asynchronous file write
+            def _write_file_sync(path: Path, data: bytes):
+                with open(path, "wb") as buffer:
+                    buffer.write(data)
+
+            import asyncio # Make sure asyncio is imported
+            await asyncio.to_thread(_write_file_sync, file_path, content)
+
+            file_info = await get_file_info(file_path) # get_file_info is now async
             logger.info(f"Saved uploaded file to: {file_path}")
             return {
                 'filename': s_filename,
@@ -99,10 +104,21 @@ class DataService:
 
     async def get_available_templates_info(self) -> List[Dict[str, Any]]:
         """Get list of available template types with their details."""
-        available_templates = []
+        import asyncio # Make sure asyncio is imported
+        tasks = []
+        template_infos_for_processing = []
+
         for type_key, info in self.template_mapping.items():
             template_path = self.templates_base_dir / info['file']
-            file_details = get_file_info(template_path)
+            tasks.append(get_file_info(template_path)) # get_file_info is async
+            template_infos_for_processing.append({'type_key': type_key, 'info': info})
+
+        file_details_list = await asyncio.gather(*tasks)
+
+        available_templates = []
+        for i, file_details in enumerate(file_details_list):
+            type_key = template_infos_for_processing[i]['type_key']
+            info = template_infos_for_processing[i]['info']
             available_templates.append({
                 "type": type_key,
                 "filename": info['file'],
@@ -125,10 +141,14 @@ class DataService:
         template_filename = self.template_mapping[template_type]['file']
         template_path = self.templates_base_dir / template_filename
 
-        if template_path.exists() and template_path.is_file():
+        import asyncio # Make sure asyncio is imported
+        exists = await asyncio.to_thread(template_path.exists)
+        is_file = await asyncio.to_thread(template_path.is_file)
+
+        if exists and is_file:
             return template_path
         else:
-            logger.warning(f"Template file not found at path: {template_path}")
+            logger.warning(f"Template file not found at path: {template_path} (exists: {exists}, is_file: {is_file})")
             return None
 
     async def get_project_file_info(self, project_name: str, relative_path_str: str) -> Dict[str, Any]:
@@ -139,21 +159,28 @@ class DataService:
         if not project_name:
             raise ValueError("Project name must be provided.")
 
-        project_dir = self.projects_base_dir / safe_filename(project_name)
-        if not project_dir.exists() or not project_dir.is_dir():
-            return {'exists': False, 'error': f"Project '{project_name}' not found."}
+        import asyncio # Make sure asyncio is imported
+
+        project_dir_name = safe_filename(project_name) # Santize once
+        project_dir = self.projects_base_dir / project_dir_name
+
+        project_dir_exists = await asyncio.to_thread(project_dir.exists)
+        project_dir_is_dir = await asyncio.to_thread(project_dir.is_dir)
+
+        if not project_dir_exists or not project_dir_is_dir:
+            return {'exists': False, 'error': f"Project '{project_name}' not found or is not a directory."}
 
         # Ensure relative_path_str is truly relative and doesn't escape project_dir
         # Path.joinpath or / operator handles this safely if relative_path_str is simple.
-        # For untrusted input, more validation might be needed.
-        file_path = (project_dir / relative_path_str).resolve()
+        file_path = await asyncio.to_thread((project_dir / relative_path_str).resolve)
 
         # Security check: Ensure the resolved path is still within the project_dir
-        if project_dir.resolve() not in file_path.parents and project_dir.resolve() != file_path :
-             logger.error(f"Path traversal attempt: {relative_path_str} for project {project_name}")
+        resolved_project_dir = await asyncio.to_thread(project_dir.resolve)
+        if resolved_project_dir not in file_path.parents and resolved_project_dir != file_path :
+             logger.error(f"Path traversal attempt: '{relative_path_str}' for project '{project_name}' resolved to '{file_path}' which is outside project root '{resolved_project_dir}'")
              return {'exists': False, 'error': "Invalid file path (path traversal suspected)."}
 
-        return get_file_info(file_path)
+        return await get_file_info(file_path) # get_file_info is async
 
 
     async def list_project_files(
@@ -166,37 +193,60 @@ class DataService:
         if not project_name:
             raise ValueError("Project name must be provided.")
 
-        project_dir = self.projects_base_dir / safe_filename(project_name)
-        search_dir = (project_dir / subdirectory).resolve()
+        import asyncio # Make sure asyncio is imported
 
-        if not search_dir.exists() or not search_dir.is_dir():
-            logger.warning(f"Search directory not found: {search_dir}")
+        project_dir_name = safe_filename(project_name)
+        project_dir = self.projects_base_dir / project_dir_name
+        search_dir = await asyncio.to_thread((project_dir / subdirectory).resolve)
+
+        search_dir_exists = await asyncio.to_thread(search_dir.exists)
+        search_dir_is_dir = await asyncio.to_thread(search_dir.is_dir)
+
+        if not search_dir_exists or not search_dir_is_dir:
+            logger.warning(f"Search directory not found or not a directory: {search_dir}")
             return []
 
         # Security: ensure search_dir is within project_dir
-        if project_dir.resolve() not in search_dir.parents and project_dir.resolve() != search_dir:
-            logger.error(f"List files attempt outside project: {subdirectory} for project {project_name}")
+        resolved_project_dir = await asyncio.to_thread(project_dir.resolve)
+        if resolved_project_dir not in search_dir.parents and resolved_project_dir != search_dir:
+            logger.error(f"List files attempt outside project: '{subdirectory}' for project '{project_name}' resolved to '{search_dir}'")
             return []
 
-        listed_files = []
-        for item_path in search_dir.iterdir():
-            if item_path.is_file():
+        listed_files_tasks = []
+        # Get items from directory in a thread
+        try:
+            dir_items = await asyncio.to_thread(list, search_dir.iterdir())
+        except OSError as e:
+            logger.error(f"Error iterating directory {search_dir}: {e}")
+            return []
+
+        for item_path in dir_items:
+            # Check if item is file in a thread
+            is_file = await asyncio.to_thread(item_path.is_file)
+            if is_file:
                 if extensions:
-                    # Ensure extensions have a leading dot for consistency if not provided
                     normalized_extensions = [ext if ext.startswith('.') else f".{ext}" for ext in extensions]
                     if item_path.suffix.lower() not in normalized_extensions:
                         continue
 
-                file_info_dict = get_file_info(item_path)
-                # Calculate relative path from project_dir for consistent client-side use
-                try:
-                    file_info_dict['relative_path'] = str(item_path.relative_to(project_dir))
-                except ValueError: # Should not happen if security check above is correct
-                    file_info_dict['relative_path'] = item_path.name
+                # get_file_info is already async
+                listed_files_tasks.append(get_file_info(item_path))
 
+        processed_file_infos = await asyncio.gather(*listed_files_tasks)
+
+        listed_files = []
+        for file_info_dict in processed_file_infos:
+            if file_info_dict.get('exists'): # Ensure file still exists and info was fetched
+                # Calculate relative path from project_dir for consistent client-side use
+                # This part is tricky if item_path is not available directly, need to reconstruct from file_info_dict['path']
+                item_path_from_info = Path(file_info_dict['path'])
+                try:
+                    file_info_dict['relative_path'] = str(item_path_from_info.relative_to(resolved_project_dir))
+                except ValueError:
+                    file_info_dict['relative_path'] = item_path_from_info.name
                 listed_files.append(file_info_dict)
 
-        listed_files.sort(key=lambda x: x.get('modified', datetime.min.isoformat()), reverse=True)
+        listed_files.sort(key=lambda x: x.get('modified_iso', datetime.min.isoformat()), reverse=True)
         return listed_files
 
     async def get_project_inputs_info(self, project_name: str) -> Dict[str, Any]:
@@ -206,8 +256,11 @@ class DataService:
         project_dir = self.projects_base_dir / safe_filename(project_name)
         inputs_dir = project_dir / "inputs"
 
-        if not inputs_dir.is_dir(): # It might not exist yet, which is fine
-            ensure_directory(inputs_dir) # Create if not exists
+        import asyncio # Make sure asyncio is imported
+
+        is_dir = await asyncio.to_thread(inputs_dir.is_dir)
+        if not is_dir: # It might not exist yet, which is fine
+            ensure_directory(inputs_dir) # Create if not exists (ensure_directory is sync)
             return {'path': str(inputs_dir), 'file_count': 0, 'files': [], 'total_size_mb': 0.0, 'available': True}
 
         files = await self.list_project_files(project_name, subdirectory="inputs")
@@ -225,15 +278,18 @@ class DataService:
         if not project_name:
             raise ValueError("Project name must be provided.")
 
-        project_inputs_dir = self.projects_base_dir / safe_filename(project_name) / "inputs"
-        if not project_inputs_dir.exists() or not project_inputs_dir.is_dir():
-            return {'success': True, 'cleaned_files': [], 'failed_files': [], 'message': "Inputs directory does not exist."}
+        import asyncio # Make sure asyncio is imported
 
-        # cleanup_old_files needs to be Path-aware or adapted
-        # For now, assuming it works with Path objects:
-        result = cleanup_old_files(project_inputs_dir, max_age_days=max_age_days)
-        # cleanup_old_files from helpers.py returns:
-        # {'success': True, 'cleaned_files': cleaned_files, 'failed_files': failed_files, 'message': ...}
+        project_inputs_dir = self.projects_base_dir / safe_filename(project_name) / "inputs"
+
+        exists = await asyncio.to_thread(project_inputs_dir.exists)
+        is_dir = await asyncio.to_thread(project_inputs_dir.is_dir)
+
+        if not exists or not is_dir:
+            return {'success': True, 'cleaned_files': [], 'failed_to_delete': [], 'message': "Inputs directory does not exist or is not a directory."}
+
+        # cleanup_old_files is now async
+        result = await cleanup_old_files(project_inputs_dir, max_age_days=max_age_days)
         return result
 
 print("Defining data service for FastAPI... (merged and adapted from old_data_service.py)")

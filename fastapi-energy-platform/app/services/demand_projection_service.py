@@ -210,20 +210,19 @@ class DemandProjectionService:
                 logger.debug(f"Using cached input data for project '{project_name}'.")
                 return data
 
-        if not input_file_path.exists():
+        path_exists = await asyncio.to_thread(input_file_path.exists)
+        if not path_exists:
             raise FileNotFoundError(f"Input file not found for project '{project_name}': {input_file_path}")
 
-        # TODO: Adapt validate_input_file and input_demand_data to be async or run in threadpool
-        # For now, assuming they are synchronous and potentially blocking
-        # validation_result = await asyncio.to_thread(validate_input_file, str(input_file_path))
-        validation_result = validate_input_file(str(input_file_path)) # Blocking call
+        # Adapt validate_input_file and input_demand_data to be async or run in threadpool
+        # These functions use pandas which is synchronous, so we run them in a thread pool.
+        validation_result = await asyncio.to_thread(validate_input_file, str(input_file_path))
         if not validation_result['valid']:
             raise ValueError(f"Input file validation failed: {'; '.join(validation_result['errors'])}")
         for warning in validation_result.get('warnings', []):
             logger.warning(f"Input file warning for {project_name}: {warning}")
 
-        # data_tuple = await asyncio.to_thread(input_demand_data, str(input_file_path))
-        data_tuple = input_demand_data(str(input_file_path)) # Blocking call
+        data_tuple = await asyncio.to_thread(input_demand_data, str(input_file_path))
 
         self._project_input_data_cache[cache_key] = (data_tuple, time.time())
         logger.info(f"Loaded input data for project '{project_name}'.")
@@ -243,7 +242,10 @@ class DemandProjectionService:
                     'num_rows': len(aggregated_ele),
                     'num_columns': len(aggregated_ele.columns)
                 } if not aggregated_ele.empty else "Not available",
-                'input_file_last_modified': datetime.fromtimestamp(input_file_path.stat().st_mtime).isoformat()
+                # Get file stat info asynchronously
+                'input_file_last_modified': datetime.fromtimestamp(
+                    (await asyncio.to_thread(input_file_path.stat)).st_mtime
+                ).isoformat()
             }
         except Exception as e:
             logger.exception(f"Error getting input data summary for project '{project_name}': {e}")
@@ -312,13 +314,21 @@ class DemandProjectionService:
         """
         project_input_file = self._get_project_input_file_path(project_name)
         project_results_dir = self.project_data_root / project_name / "results" / "demand_projection" / config.scenario_name
-        project_results_dir.mkdir(parents=True, exist_ok=True)
+
+        # Async directory creation
+        await asyncio.to_thread(project_results_dir.mkdir, parents=True, exist_ok=True)
 
         try:
             await forecast_job_manager.update_job(job_id, status=JOB_STATUS['RUNNING'], progress=5, current_message='Loading input data...')
-            # These are blocking I/O, should be wrapped with to_thread for true async
-            # sectors, _, param_dict, sector_data_map, _ = await asyncio.to_thread(input_demand_data, str(project_input_file))
-            sectors, _, param_dict, sector_data_map, _ = input_demand_data(str(project_input_file))
+
+            # Assuming _load_input_data is preferred. If direct call is needed, make it async.
+            # For this review, let's assume data is loaded via _load_input_data if possible,
+            # or if not, this call needs to be async. For now, making it async.
+            sectors, _, param_dict, sector_data_map, _ = await asyncio.to_thread(
+                input_demand_data, str(project_input_file)
+            )
+            # A better approach might be:
+            # sectors, _, param_dict, sector_data_map, _ = await self._load_input_data(project_name, force_reload=True)
 
 
             await forecast_job_manager.update_job(job_id, progress=10, current_message='Data loaded. Saving configuration...')
@@ -329,8 +339,11 @@ class DemandProjectionService:
                 "available_sectors_in_file": sectors,
                 "execution_timestamp": datetime.now().isoformat()
             }
-            with open(project_results_dir / "forecast_run_config.json", "w") as f:
-                json.dump(full_config_data, f, indent=2)
+
+            def _dump_json_sync():
+                with open(project_results_dir / "forecast_run_config.json", "w") as f:
+                    json.dump(full_config_data, f, indent=2)
+            await asyncio.to_thread(_dump_json_sync)
 
             all_sector_results: List[SectorProcessingResult] = []
 
@@ -392,15 +405,43 @@ class DemandProjectionService:
                 await forecast_job_manager.add_sector_result(job_id, s_result)
 
             # Finalize job
-            # TODO: Create a summary of all_sector_results
-            # For now, just marking as complete if no errors, or partial if some errors.
+            # Create a summary of all_sector_results
+            successful_sectors_count = sum(1 for sr in all_sector_results if sr.status == 'success')
+            failed_sectors_count = sum(1 for sr in all_sector_results if sr.status == 'failed')
+            existing_data_sectors_count = sum(1 for sr in all_sector_results if sr.status == 'existing_data') # Assuming this status exists
+            total_processing_time = sum(sr.processing_time_seconds for sr in all_sector_results)
+
+            detailed_summary = {
+                "total_sectors_configured": len(config.sector_configs),
+                "total_sectors_processed": len(all_sector_results),
+                "successful_sectors": successful_sectors_count,
+                "failed_sectors": failed_sectors_count,
+                "existing_data_sectors": existing_data_sectors_count, # If applicable
+                "processed_sector_details": [asdict(sr) for sr in all_sector_results], # Includes individual messages, errors, times
+                "overall_output_path": str(project_results_dir),
+                "total_forecast_processing_time_seconds": round(total_processing_time, 2)
+            }
+
             final_status = JOB_STATUS['COMPLETED']
             final_message = "Forecast completed."
-            if any(sr.status == 'failed' for sr in all_sector_results):
+            if failed_sectors_count > 0 and successful_sectors_count > 0:
                 final_message = "Forecast completed with some errors."
-                # final_status could remain 'COMPLETED' or be a specific 'PARTIAL_SUCCESS'
+                # final_status = JOB_STATUS['PARTIAL_SUCCESS'] # If you add such a status
+            elif failed_sectors_count > 0 and successful_sectors_count == 0:
+                final_status = JOB_STATUS['FAILED']
+                final_message = "Forecast failed for all sectors."
+            elif not all_sector_results:
+                 final_status = JOB_STATUS['FAILED'] # Or COMPLETED if no sectors was valid
+                 final_message = "No sectors were processed."
 
-            await forecast_job_manager.update_job(job_id, status=final_status, progress=100, current_message=final_message, result_summary={"sector_outputs_path": str(project_results_dir)})
+
+            await forecast_job_manager.update_job(
+                job_id,
+                status=final_status,
+                progress=100,
+                current_message=final_message,
+                result_summary=detailed_summary
+            )
             logger.info(f"Forecast job {job_id} for project '{project_name}' finished with status: {final_status}")
 
         except FileNotFoundError as e_fnf:

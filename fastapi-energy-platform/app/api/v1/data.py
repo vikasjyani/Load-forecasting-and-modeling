@@ -42,14 +42,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Dependency for DataService ---
-async def get_data_service():
-    # These paths would come from a global settings/config object in a real app
-    # project_data_root = Path(settings.PROJECT_DATA_ROOT)
-    # templates_base_dir = Path(settings.TEMPLATES_DIR)
-    # For now, using relative paths for placeholder:
-    project_data_root = Path("user_projects_data") # Example
-    templates_base_dir = Path("app_templates")     # Example
-    return DataService(project_data_root=project_data_root, templates_base_dir=templates_base_dir)
+from app.dependencies import get_data_service as get_data_service_dependency
+# The local get_data_service function is no longer needed.
 
 # --- API Endpoints ---
 
@@ -57,7 +51,7 @@ async def get_data_service():
 async def upload_data_api(
     project_name: str = Query(..., description="Name of the project to upload the file to."),
     file: UploadFile = File(...),
-    service: DataService = Depends(get_data_service)
+    service: DataService = Depends(get_data_service_dependency)
 ):
     """
     Uploads a data file (e.g., Excel, CSV) to the specified project's input directory.
@@ -97,7 +91,7 @@ async def upload_data_api(
 
 
 @router.get("/download/template/{template_type}", summary="Download Template File")
-async def download_template_api(template_type: str, service: DataService = Depends(get_data_service)):
+async def download_template_api(template_type: str, service: DataService = Depends(get_data_service_dependency)):
     """Downloads a specific template file (e.g., input_demand_file.xlsx)."""
     try:
         template_path = await service.get_template_file_path(template_type)
@@ -122,7 +116,7 @@ async def download_template_api(template_type: str, service: DataService = Depen
 # if these documents are managed by DataService and stored in a configurable location.
 
 @router.get("/templates", summary="List Available Templates")
-async def list_templates_api(service: DataService = Depends(get_data_service)):
+async def list_templates_api(service: DataService = Depends(get_data_service_dependency)):
     """Retrieves a list of available data templates with their descriptions."""
     try:
         templates_info = await service.get_available_templates_info()
@@ -134,7 +128,7 @@ async def list_templates_api(service: DataService = Depends(get_data_service)):
 @router.get("/upload_status", summary="Get Upload Status and Configuration")
 async def upload_status_api(
     project_name: str = Query(..., description="Name of the project to check upload status for."),
-    service: DataService = Depends(get_data_service)
+    service: DataService = Depends(get_data_service_dependency)
 ):
     """Provides information about upload capabilities for a project, like allowed extensions and max size."""
     try:

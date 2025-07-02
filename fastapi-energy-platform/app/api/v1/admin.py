@@ -38,20 +38,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Dependency for AdminService ---
-# This is a simplified way to get the service. In a larger app, you might have a more complex DI setup.
-# For now, we assume AdminService can be instantiated directly or we use the placeholder.
-# If actual DI is set up (e.g., with FastAPI-Limiter, or custom provider):
-# async def get_admin_service(service: AdminService = Depends()):
-# return service
-# For now:
-async def get_admin_service():
-    # This path would be configured, e.g. via settings
-    # For project-specific features, AdminService might need project_data_root
-    # and the specific project_name would be passed to its methods.
-    # global_feature_config_path = Path(app.state.settings.GLOBAL_FEATURES_PATH) # Example
-    # project_data_root_path = Path(app.state.settings.PROJECTS_DATA_ROOT) # Example
-    # return AdminService(global_feature_config_path, project_data_root_path)
-    return AdminService() # Using placeholder or default constructor for now
+from app.dependencies import get_admin_service as get_admin_service_dependency
+# No longer need the local get_admin_service function, will use Depends(get_admin_service_dependency) directly in routes.
 
 # --- Pydantic Models for Request/Response ---
 class FeatureUpdatePayload(BaseModel):
@@ -71,7 +59,7 @@ class SystemCleanupPayload(BaseModel):
 @router.get("/features", summary="Get Features Configuration")
 async def get_features_api(
     project_name: Optional[str] = None, # Query parameter for project-specific features
-    service: AdminService = Depends(get_admin_service)
+    service: AdminService = Depends(get_admin_service_dependency)
 ):
     """Retrieves the current feature flag configuration, optionally for a specific project."""
     try:
@@ -89,7 +77,7 @@ async def update_feature_api(
     feature_id: str,
     payload: FeatureUpdatePayload,
     project_name: Optional[str] = None, # Query parameter
-    service: AdminService = Depends(get_admin_service)
+    service: AdminService = Depends(get_admin_service_dependency)
 ):
     """Enables or disables a specific feature, optionally for a project."""
     try:
@@ -109,7 +97,7 @@ async def update_feature_api(
 @router.post("/features/bulk_update", summary="Bulk Update Feature Statuses")
 async def bulk_update_features_api(
     payload: BulkFeatureUpdatePayload,
-    service: AdminService = Depends(get_admin_service)
+    service: AdminService = Depends(get_admin_service_dependency)
 ):
     """Allows updating multiple feature statuses in a single request."""
     try:
@@ -130,7 +118,7 @@ async def bulk_update_features_api(
 @router.post("/system/cleanup", summary="Perform System Cleanup")
 async def system_cleanup_api(
     payload: SystemCleanupPayload,
-    service: AdminService = Depends(get_admin_service)
+    service: AdminService = Depends(get_admin_service_dependency)
 ):
     """Triggers system cleanup tasks like deleting old logs or temporary files."""
     try:
@@ -145,7 +133,7 @@ async def system_cleanup_api(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/system/info", summary="Get Comprehensive System Information")
-async def system_info_api(service: AdminService = Depends(get_admin_service)):
+async def system_info_api(service: AdminService = Depends(get_admin_service_dependency)):
     """Retrieves detailed system information, including platform, resources, and application status."""
     try:
         system_info = await service.get_comprehensive_system_info()
@@ -158,7 +146,7 @@ async def system_info_api(service: AdminService = Depends(get_admin_service)):
 
 
 @router.get("/system/health", summary="Get System Health Metrics")
-async def system_health_api(service: AdminService = Depends(get_admin_service)):
+async def system_health_api(service: AdminService = Depends(get_admin_service_dependency)):
     """Provides real-time system health metrics (CPU, memory, disk, application health)."""
     try:
         health_data = await service.get_system_health_metrics()

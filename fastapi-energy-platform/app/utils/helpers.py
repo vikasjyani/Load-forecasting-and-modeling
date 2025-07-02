@@ -11,7 +11,8 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from fastapi import UploadFile # Used for type hinting if a helper processes UploadFile directly
-from typing import Union, List, Dict, Any, Optional # Added Optional and Any
+from typing import Union, List, Dict, Any, Optional, Tuple # Added Optional, Any, Tuple
+import asyncio # For async operations
 
 # Assuming constants are now in fastapi-energy-platform/app/utils/constants.py
 from app.utils.constants import (
@@ -84,7 +85,7 @@ def ensure_directory(path: Union[Path, str]) -> bool:
         logger.error(f"Failed to create directory {path}: {e}", exc_info=True)
         return False
 
-def create_project_structure(project_path: Union[Path, str], template_root_path: Optional[Union[Path, str]] = None) -> Dict[str, Any]:
+async def create_project_structure(project_path: Union[Path, str], template_root_path: Optional[Union[Path, str]] = None) -> Dict[str, Any]:
     """
     Creates a standard project folder structure at the given project_path.
     Optionally copies template files from template_root_path into the 'inputs' subdirectory.
@@ -107,7 +108,7 @@ def create_project_structure(project_path: Union[Path, str], template_root_path:
     project_path = Path(project_path)
     logger.info(f"Attempting to create project structure at: {project_path}")
 
-    if not ensure_directory(project_path):
+    if not ensure_directory(project_path): # ensure_directory is sync again
         return {
             'success': False, 'message': f'Failed to create main project directory: {project_path}',
             'created_folders': [], 'copied_templates': [], 'metadata_path': '', 'error': 'Directory creation failed.'
@@ -116,39 +117,47 @@ def create_project_structure(project_path: Union[Path, str], template_root_path:
     created_folders: List[str] = []
     for folder_name, subfolders_dict in PROJECT_STRUCTURE.items(): # PROJECT_STRUCTURE from constants
         folder_path = project_path / folder_name
-        if ensure_directory(folder_path):
+        if ensure_directory(folder_path): # ensure_directory is sync again
             created_folders.append(folder_name)
             if isinstance(subfolders_dict, dict): # If subfolders are defined
                 for subfolder_name in subfolders_dict.keys():
                     subfolder_path = folder_path / subfolder_name
-                    if ensure_directory(subfolder_path):
+                    if ensure_directory(subfolder_path): # ensure_directory is sync again
                         created_folders.append(f"{folder_name}/{subfolder_name}")
 
     copied_templates: List[str] = []
     if template_root_path:
         template_root_path = Path(template_root_path)
-        if template_root_path.exists() and template_root_path.is_dir():
+        # Use asyncio.to_thread for path checks
+        template_root_exists = await asyncio.to_thread(template_root_path.exists)
+        template_root_is_dir = await asyncio.to_thread(template_root_path.is_dir)
+
+        if template_root_exists and template_root_is_dir:
             inputs_folder = project_path / 'inputs' # Standard inputs folder
-            ensure_directory(inputs_folder) # Ensure it exists
+            ensure_directory(inputs_folder) # ensure_directory is sync again
 
             for template_source_filename, template_dest_filename in TEMPLATE_FILES.items(): # TEMPLATE_FILES from constants
                 source_path = template_root_path / template_source_filename
-                if source_path.exists() and source_path.is_file():
+                source_path_exists = await asyncio.to_thread(source_path.exists)
+                source_path_is_file = await asyncio.to_thread(source_path.is_file)
+
+                if source_path_exists and source_path_is_file:
                     dest_path = inputs_folder / template_dest_filename
                     try:
-                        shutil.copy2(source_path, dest_path)
+                        await asyncio.to_thread(shutil.copy2, source_path, dest_path) # shutil.copy2 is blocking
                         copied_templates.append(template_dest_filename)
                         logger.debug(f"Copied template: {source_path} -> {dest_path}")
                     except Exception as e_copy:
                         logger.warning(f"Failed to copy template {source_path} to {dest_path}: {e_copy}")
                 else:
-                    logger.warning(f"Template source file not found: {source_path}")
+                    logger.warning(f"Template source file not found or not a file: {source_path}")
         else:
             logger.warning(f"Template root path not found or not a directory: {template_root_path}")
 
     project_metadata = {
         'project_name': project_path.name,
-        'project_path': str(project_path.resolve()), # Store absolute path
+        # await asyncio.to_thread(project_path.resolve) if path can be non-existent or complex
+        'project_path': str(await asyncio.to_thread(project_path.resolve)), # Store absolute path
         'created_at': datetime.now().isoformat(),
         'last_modified_at': datetime.now().isoformat(),
         'version': '1.0', # Application version or project file format version
@@ -157,12 +166,16 @@ def create_project_structure(project_path: Union[Path, str], template_root_path:
     }
 
     metadata_dir = project_path / 'config' # Standard config folder
-    ensure_directory(metadata_dir)
+    await ensure_directory(metadata_dir) # Added await
     metadata_file_path = metadata_dir / 'project_metadata.json'
 
     try:
-        with open(metadata_file_path, 'w') as f:
-            json.dump(project_metadata, f, indent=4)
+        # Asynchronous file write for json.dump
+        def _dump_json():
+            with open(metadata_file_path, 'w') as f:
+                json.dump(project_metadata, f, indent=4)
+
+        await asyncio.to_thread(_dump_json)
         logger.info(f"Project metadata saved to {metadata_file_path}")
     except Exception as e_meta:
         logger.warning(f"Failed to create project metadata file at {metadata_file_path}: {e_meta}")
@@ -176,9 +189,9 @@ def create_project_structure(project_path: Union[Path, str], template_root_path:
     }
 
 
-def validate_project_structure(project_path: Union[Path, str]) -> Dict[str, Any]:
+async def validate_project_structure(project_path: Union[Path, str]) -> Dict[str, Any]:
     """
-    Validates if the given project_path adheres to the expected project structure.
+    Validates if the given project_path adheres to the expected project structure. (Asynchronous version)
     Checks for existence of defined folders and essential template files.
 
     Args:
@@ -197,14 +210,17 @@ def validate_project_structure(project_path: Union[Path, str]) -> Dict[str, Any]
             - 'error' (str, optional): Error message if a critical validation step failed.
     """
     project_path = Path(project_path)
-    if not project_path.exists():
+    project_exists = await asyncio.to_thread(project_path.exists)
+    if not project_exists:
         return {
             'status': 'error', 'valid': False, 'can_fix': False,
             'message': ERROR_MESSAGES.get('FILE_NOT_FOUND', 'File not found.').replace('file', f'project path "{project_path}"'),
             'missing_folders': list(PROJECT_STRUCTURE.keys()), 'existing_folders': [],
             'missing_templates': list(TEMPLATE_FILES.values()), 'existing_templates': []
         }
-    if not project_path.is_dir():
+
+    project_is_dir = await asyncio.to_thread(project_path.is_dir)
+    if not project_is_dir:
         return {
             'status': 'error', 'valid': False, 'can_fix': False,
             'message': f'The path "{project_path}" is not a directory.',
@@ -215,23 +231,32 @@ def validate_project_structure(project_path: Union[Path, str]) -> Dict[str, Any]
     missing_folders, existing_folders = [], []
     for folder_name, subfolders_dict in PROJECT_STRUCTURE.items():
         folder_path = project_path / folder_name
-        if not (folder_path.exists() and folder_path.is_dir()):
+        folder_exists = await asyncio.to_thread(folder_path.exists)
+        folder_is_dir = await asyncio.to_thread(folder_path.is_dir)
+        if not (folder_exists and folder_is_dir):
             missing_folders.append(folder_name)
         else:
             existing_folders.append(folder_name)
             if isinstance(subfolders_dict, dict): # Check subfolders
                 for subfolder_name in subfolders_dict.keys():
                     subfolder_path = folder_path / subfolder_name
-                    if not (subfolder_path.exists() and subfolder_path.is_dir()):
+                    subfolder_exists = await asyncio.to_thread(subfolder_path.exists)
+                    subfolder_is_dir = await asyncio.to_thread(subfolder_path.is_dir)
+                    if not (subfolder_exists and subfolder_is_dir):
                         missing_folders.append(f"{folder_name}/{subfolder_name}")
                     else:
                         existing_folders.append(f"{folder_name}/{subfolder_name}")
 
     inputs_folder = project_path / 'inputs'
     missing_templates, existing_templates = [], []
-    if inputs_folder.exists() and inputs_folder.is_dir():
+    inputs_folder_exists = await asyncio.to_thread(inputs_folder.exists)
+    inputs_folder_is_dir = await asyncio.to_thread(inputs_folder.is_dir)
+
+    if inputs_folder_exists and inputs_folder_is_dir:
         for template_dest_name in TEMPLATE_FILES.values():
-            if not (inputs_folder / template_dest_name).exists():
+            template_file_path = inputs_folder / template_dest_name
+            template_exists = await asyncio.to_thread(template_file_path.exists)
+            if not template_exists:
                 missing_templates.append(template_dest_name)
             else:
                 existing_templates.append(template_dest_name)
@@ -261,9 +286,9 @@ def validate_project_structure(project_path: Union[Path, str]) -> Dict[str, Any]
         'missing_templates': missing_templates, 'existing_templates': existing_templates
     }
 
-def copy_missing_templates(project_path: Union[Path, str], missing_templates: List[str], template_root_path: Union[Path, str]) -> Dict[str, Any]:
+async def copy_missing_templates(project_path: Union[Path, str], missing_templates: List[str], template_root_path: Union[Path, str]) -> Dict[str, Any]:
     """
-    Copies specified missing template files from the template_root_path to the
+    Copies specified missing template files from the template_root_path to the (Asynchronous version)
     project's 'inputs' directory.
 
     Args:
@@ -284,37 +309,45 @@ def copy_missing_templates(project_path: Union[Path, str], missing_templates: Li
     if not missing_templates:
         return {'success': True, 'copied': [], 'failed': [], 'message': 'No missing templates specified to copy.'}
 
-    if not (template_root_path.exists() and template_root_path.is_dir()):
+    template_root_exists = await asyncio.to_thread(template_root_path.exists)
+    template_root_is_dir = await asyncio.to_thread(template_root_path.is_dir)
+    if not (template_root_exists and template_root_is_dir):
         return {'success': False, 'copied': [], 'failed': missing_templates, 'message': 'Template source directory not found or is not a directory.'}
 
     inputs_folder = project_path / 'inputs'
-    if not ensure_directory(inputs_folder):
+    if not ensure_directory(inputs_folder): # ensure_directory is sync again
         return {'success': False, 'copied': [], 'failed': missing_templates, 'message': f'Failed to ensure inputs directory exists at {inputs_folder}.'}
 
     copied_list, failed_list = [], []
     # TEMPLATE_FILES maps source filename to destination filename. We need to find the source name.
     source_to_dest_map = {v: k for k, v in TEMPLATE_FILES.items()}
 
-    for dest_filename in missing_templates:
-        source_filename = source_to_dest_map.get(dest_filename)
-        if not source_filename:
-            logger.warning(f"No source mapping found for destination template '{dest_filename}'. Skipping.")
-            failed_list.append(dest_filename)
-            continue
+    async def copy_single_template(dest_filename_item: str):
+        source_filename_item = source_to_dest_map.get(dest_filename_item)
+        if not source_filename_item:
+            logger.warning(f"No source mapping found for destination template '{dest_filename_item}'. Skipping.")
+            failed_list.append(dest_filename_item)
+            return
 
-        source_path = template_root_path / source_filename
-        dest_path = inputs_folder / dest_filename
+        source_path_item = template_root_path / source_filename_item
+        dest_path_item = inputs_folder / dest_filename_item
         try:
-            if source_path.exists() and source_path.is_file():
-                shutil.copy2(source_path, dest_path)
-                copied_list.append(dest_filename)
-                logger.info(f"Successfully copied template: {source_path} -> {dest_path}")
+            source_exists = await asyncio.to_thread(source_path_item.exists)
+            source_is_file = await asyncio.to_thread(source_path_item.is_file)
+            if source_exists and source_is_file:
+                await asyncio.to_thread(shutil.copy2, source_path_item, dest_path_item)
+                copied_list.append(dest_filename_item)
+                logger.info(f"Successfully copied template: {source_path_item} -> {dest_path_item}")
             else:
-                logger.warning(f"Template source file not found: {source_path}")
-                failed_list.append(dest_filename)
-        except Exception as e_copy:
-            logger.error(f"Error copying template {source_filename} to {dest_path}: {e_copy}")
-            failed_list.append(dest_filename)
+                logger.warning(f"Template source file not found or not a file: {source_path_item}")
+                failed_list.append(dest_filename_item)
+        except Exception as e_copy_item:
+            logger.error(f"Error copying template {source_filename_item} to {dest_path_item}: {e_copy_item}")
+            failed_list.append(dest_filename_item)
+
+    tasks = [copy_single_template(dest_file) for dest_file in missing_templates]
+    if tasks:
+        await asyncio.gather(*tasks)
 
     is_operation_success = not failed_list
     message = f"Copied {len(copied_list)} templates."
@@ -498,9 +531,9 @@ def interpolate_td_losses_for_range(range_start_year: int, range_end_year: int, 
         return {year: 0.0 for year in range(range_start_year, range_end_year + 1)}
 
 
-def validate_file_path(file_path_str: str, base_path: Optional[Union[Path, str]] = None) -> Dict[str, Any]:
+async def validate_file_path(file_path_str: str, base_path: Optional[Union[Path, str]] = None) -> Dict[str, Any]:
     """
-    Validates a file path for safety and optional inclusion within a base directory.
+    Validates a file path for safety and optional inclusion within a base directory. (Asynchronous version)
     This is primarily for paths constructed internally, not for direct user input paths
     which should be handled with extreme care (e.g., never directly used from user input).
 
@@ -528,20 +561,23 @@ def validate_file_path(file_path_str: str, base_path: Optional[Union[Path, str]]
 
         # If a base_path is provided, ensure the final path is within it.
         if base_path:
-            base_path_abs = Path(base_path).resolve()
-            # Attempt to resolve the combined path
-            # If file_path_str is absolute, Path(base_path_abs, file_path_str) might behave unexpectedly.
+            base_path_abs = await asyncio.to_thread(Path(base_path).resolve)
+
             # Path() constructor is safer for potentially absolute inputs.
-            if Path(file_path_str).is_absolute():
+            path_obj_file_path_str = Path(file_path_str) # Create Path object once
+            is_abs_input = await asyncio.to_thread(path_obj_file_path_str.is_absolute)
+
+            if is_abs_input:
                 # If file_path_str is absolute, it must be *equal to or under* base_path_abs
-                abs_file_path = Path(file_path_str).resolve()
+                abs_file_path = await asyncio.to_thread(path_obj_file_path_str.resolve)
                 if not str(abs_file_path).startswith(str(base_path_abs)):
                     return {'valid': False, 'message': 'Absolute file path is outside the allowed base directory.'}
             else:
                 # If relative, join with base_path and resolve
-                abs_file_path = (base_path_abs / file_path_str).resolve()
+                abs_file_path = await asyncio.to_thread((base_path_abs / path_obj_file_path_str).resolve)
                 # Check if abs_file_path is truly under base_path_abs
                 # This is a common way to check for path traversal after resolving.
+                # Note: .parents is synchronous, but operates on already resolved Path objects.
                 if base_path_abs != abs_file_path and base_path_abs not in abs_file_path.parents:
                     return {'valid': False, 'message': 'File path resolves outside the allowed base directory (path traversal attempt).'}
 
@@ -550,7 +586,7 @@ def validate_file_path(file_path_str: str, base_path: Optional[Union[Path, str]]
             # No base path, just attempt to resolve. This doesn't make it "safe" from accessing
             # arbitrary system files if the input `file_path_str` is user-controlled.
             # This validation is more about path well-formedness in this case.
-            Path(file_path_str).resolve() # Will raise error if path is malformed for OS
+            await asyncio.to_thread(Path(file_path_str).resolve) # Will raise error if path is malformed for OS
             return {'valid': True, 'message': 'File path format appears valid (no base path check).'}
 
     except Exception as e_path:
@@ -558,9 +594,9 @@ def validate_file_path(file_path_str: str, base_path: Optional[Union[Path, str]]
         return {'valid': False, 'message': f'Path validation error: {str(e_path)}'}
 
 
-def get_file_info(file_path: Union[Path, str]) -> Dict[str, Any]:
+async def get_file_info(file_path: Union[Path, str]) -> Dict[str, Any]:
     """
-    Retrieves comprehensive information about a file or directory.
+    Retrieves comprehensive information about a file or directory. (Asynchronous version)
 
     Args:
         file_path (Union[Path, str]): The path to the file or directory.
@@ -581,11 +617,16 @@ def get_file_info(file_path: Union[Path, str]) -> Dict[str, Any]:
             - 'error' (str, optional): Error message if an exception occurred.
     """
     file_path_obj = Path(file_path)
+    import asyncio # Required for asyncio.to_thread
     try:
-        if not file_path_obj.exists():
+        exists = await asyncio.to_thread(file_path_obj.exists)
+        if not exists:
             return {'exists': False, 'path': str(file_path_obj), 'message': 'Path does not exist.'}
 
-        stat_info = file_path_obj.stat()
+        stat_info = await asyncio.to_thread(file_path_obj.stat)
+        is_file = await asyncio.to_thread(file_path_obj.is_file)
+        is_directory = await asyncio.to_thread(file_path_obj.is_dir)
+
         return {
             'exists': True,
             'path': str(file_path_obj),
@@ -594,18 +635,18 @@ def get_file_info(file_path: Union[Path, str]) -> Dict[str, Any]:
             'size_mb': round(stat_info.st_size / (1024 * 1024), 2),
             'created_iso': datetime.fromtimestamp(stat_info.st_ctime).isoformat(),
             'modified_iso': datetime.fromtimestamp(stat_info.st_mtime).isoformat(),
-            'is_file': file_path_obj.is_file(),
-            'is_directory': file_path_obj.is_dir(),
-            'extension': file_path_obj.suffix.lower() if file_path_obj.is_file() else None
+            'is_file': is_file,
+            'is_directory': is_directory,
+            'extension': file_path_obj.suffix.lower() if is_file else None
         }
     except Exception as e_info:
         logger.error(f"Error getting file info for {file_path_obj}: {e_info}", exc_info=True)
         return {'exists': False, 'path': str(file_path_obj), 'error': str(e_info)}
 
 
-def cleanup_old_files(directory: Union[Path, str], max_age_days: int = 30, file_patterns: Optional[List[str]] = None) -> Dict[str, Any]:
+async def cleanup_old_files(directory: Union[Path, str], max_age_days: int = 30, file_patterns: Optional[List[str]] = None) -> Dict[str, Any]:
     """
-    Cleans up old files in a specified directory based on their modification time.
+    Cleans up old files in a specified directory based on their modification time. (Asynchronous version)
 
     Args:
         directory (Union[Path, str]): The directory to clean.
@@ -626,22 +667,47 @@ def cleanup_old_files(directory: Union[Path, str], max_age_days: int = 30, file_
         return {'success': False, 'cleaned_files': [], 'failed_to_delete': [], 'message': 'Directory does not exist or is not a directory.'}
 
     import time # Local import for this function
+    import asyncio # For asyncio.to_thread
+
     cutoff_timestamp = time.time() - (max_age_days * 24 * 60 * 60)
     cleaned_files_list, failed_files_list = [], []
 
-    glob_patterns_to_check = file_patterns if file_patterns else ["*"] # Check all files if no pattern
+    glob_patterns_to_check = file_patterns if file_patterns else ["*"]
 
+    # Helper function to process a single file path asynchronously
+    async def process_file(item_path_to_check: Path):
+        try:
+            # Run synchronous stat() in a thread
+            stat_info = await asyncio.to_thread(item_path_to_check.stat)
+            if stat_info.st_mtime < cutoff_timestamp:
+                # Run synchronous unlink() in a thread
+                await asyncio.to_thread(item_path_to_check.unlink)
+                cleaned_files_list.append(item_path_to_check.name)
+                logger.info(f"Cleaned up old file: {item_path_to_check}")
+        except Exception as e_clean:
+            failed_files_list.append({'file': item_path_to_check.name, 'error': str(e_clean)})
+            logger.error(f"Failed to clean up file {item_path_to_check.name}: {e_clean}")
+
+    # Collect all file processing tasks
+    tasks = []
     for pattern in glob_patterns_to_check:
-        for item_path in directory_path.glob(pattern):
-            if item_path.is_file():
-                try:
-                    if item_path.stat().st_mtime < cutoff_timestamp:
-                        item_path.unlink() # Delete the file
-                        cleaned_files_list.append(item_path.name)
-                        logger.info(f"Cleaned up old file: {item_path}")
-                except Exception as e_clean:
-                    failed_files_list.append({'file': item_path.name, 'error': str(e_clean)})
-                    logger.error(f"Failed to clean up file {item_path.name}: {e_clean}")
+        # directory_path.glob() is an iterator, convert to list for async processing
+        # or wrap the glob iteration itself if it's very large.
+        # For simplicity, let's assume the number of files per pattern isn't astronomically large
+        # such that converting glob result to list becomes a memory issue itself.
+        # If it is, a more complex async generator approach for glob would be needed.
+        try:
+            items_to_check = await asyncio.to_thread(list, directory_path.glob(pattern))
+            for item_path in items_to_check:
+                is_file = await asyncio.to_thread(item_path.is_file)
+                if is_file:
+                    tasks.append(process_file(item_path))
+        except Exception as e_glob:
+            logger.error(f"Error during globbing pattern {pattern} in {directory_path}: {e_glob}")
+            # Potentially add to failed_files_list or handle as a broader error
+
+    if tasks:
+        await asyncio.gather(*tasks)
 
     return {
         'success': True, # Operation itself completed

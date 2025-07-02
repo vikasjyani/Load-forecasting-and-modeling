@@ -46,10 +46,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Dependency for LoadProfileService ---
-async def get_load_profile_service(request: Request):
-    # project_data_root = Path(request.app.state.settings.PROJECT_DATA_ROOT) # Example
-    project_data_root = Path("user_projects_data") # Placeholder
-    return LoadProfileService(project_data_root=project_data_root)
+from app.dependencies import get_load_profile_service as get_load_profile_service_dependency
+# The local get_load_profile_service function is no longer needed.
 
 # --- Pydantic Models ---
 class BaseProfileGenerationPayload(BaseModel):
@@ -80,7 +78,7 @@ class StlProfileGenerationPayload(BaseModel):
 @router.get("/{project_name}/main_data", summary="Get Main Page Data for Load Profile Generation")
 async def get_main_page_data_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     try:
         data = await service.get_main_page_data(project_name=project_name)
@@ -94,7 +92,7 @@ async def get_main_page_data_api(
 async def generate_base_profile_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     payload: BaseProfileGenerationPayload,
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     try:
         # Additional validation if Pydantic models are not enough

@@ -135,21 +135,30 @@ class AdminService:
         # This needs access to configured paths (LOGS_FOLDER, UPLOAD_FOLDER)
         # Example: logs_folder = self.settings.LOGS_DIR
         # Example: upload_folder = self.settings.UPLOADS_DIR
-        logs_folder = Path("logs") # Placeholder - use configured path
-        upload_folder = Path("uploads_temp") # Placeholder
+        logs_folder = Path("logs") # Placeholder - use configured path from self.settings (e.g., self.settings.LOGS_DIR)
+        upload_folder = Path("uploads_temp") # Placeholder - use configured path (e.g., self.settings.TEMP_UPLOAD_DIR)
+        import asyncio # Required for asyncio.to_thread
 
         cleanup_results: Dict[str, Any] = {}
         total_cleaned = 0
         try:
-            if cleanup_type in ['all', 'logs'] and logs_folder.exists():
-                logs_result = cleanup_old_files(logs_folder, max_age_days=max_age_days, file_patterns=['.log'])
+            logs_folder_exists = await asyncio.to_thread(logs_folder.exists)
+            if cleanup_type in ['all', 'logs'] and logs_folder_exists:
+                logs_result = await cleanup_old_files(logs_folder, max_age_days=max_age_days, file_patterns=['.log'])
                 cleanup_results['logs'] = logs_result
                 total_cleaned += len(logs_result.get('cleaned_files', []))
+            elif cleanup_type in ['all', 'logs']:
+                 cleanup_results['logs'] = {'success': True, 'message': f'Logs directory {logs_folder} does not exist. Skipping cleanup.'}
 
-            if cleanup_type in ['all', 'temp'] and upload_folder.exists():
-                temp_result = cleanup_old_files(upload_folder, max_age_days=7, file_patterns=['.tmp', '.temp'])
+
+            upload_folder_exists = await asyncio.to_thread(upload_folder.exists)
+            if cleanup_type in ['all', 'temp'] and upload_folder_exists:
+                temp_result = await cleanup_old_files(upload_folder, max_age_days=7, file_patterns=['.tmp', '.temp'])
                 cleanup_results['temp'] = temp_result
                 total_cleaned += len(temp_result.get('cleaned_files', []))
+            elif cleanup_type in ['all', 'temp']:
+                cleanup_results['temp'] = {'success': True, 'message': f'Temp upload directory {upload_folder} does not exist. Skipping cleanup.'}
+
 
             if cleanup_type in ['all', 'cache']:
                 # cache.clear_all() # Example if cache object has a clear_all method
