@@ -67,48 +67,81 @@ class DemandVisualizationService:
             logger.warning(f"Scenarios path does not exist for project '{project_name}': {scenarios_base_path}")
             return []
 
-        scenario_infos = []
-        for item_path in scenarios_base_path.iterdir():
-            if item_path.is_dir(): # Each scenario is a directory
-                try:
-                    # _analyze_scenario_directory_async needs to be defined or adapted
-                    # For now, using a synchronous placeholder or direct analysis
-                    info = self._analyze_scenario_directory_sync(item_path.name, item_path)
-                    if info.has_data:
-                        scenario_infos.append(info)
-                except Exception as e:
-                    logger.warning(f"Error analyzing scenario directory {item_path.name} in project '{project_name}': {e}")
+        scenario_infos_raw = []
+        import asyncio # Ensure asyncio is imported
 
-        scenario_infos.sort(key=lambda s: s.last_modified_iso or "", reverse=True)
-        logger.info(f"Found {len(scenario_infos)} scenarios for project '{project_name}'.")
-        return scenario_infos
+        # Get directory items asynchronously
+        try:
+            dir_items = await asyncio.to_thread(list, scenarios_base_path.iterdir())
+        except OSError as e:
+            logger.error(f"Error iterating scenarios directory {scenarios_base_path} for project '{project_name}': {e}")
+            return []
 
-    def _analyze_scenario_directory_sync(self, scenario_dir_name: str, scenario_path: Path) -> ScenarioInfo:
-        """Synchronously analyzes a scenario directory for metadata."""
-        excel_files = [f for f in scenario_path.iterdir() if f.is_file() and f.suffix == '.xlsx' and not f.name.startswith(('_', '~'))]
+        tasks = []
+        for item_path in dir_items:
+            # Check if item is directory asynchronously
+            is_dir = await asyncio.to_thread(item_path.is_dir)
+            if is_dir: # Each scenario is a directory
+                tasks.append(self._analyze_scenario_directory_async(item_path.name, item_path, project_name))
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, ScenarioInfo) and res.has_data:
+                    scenario_infos_raw.append(res)
+                elif isinstance(res, Exception):
+                    # Log the exception, already logged in _analyze_scenario_directory_async if it's from there
+                    logger.warning(f"An exception was returned from scenario analysis: {res}")
+
+
+        scenario_infos_raw.sort(key=lambda s: s.last_modified_iso or "", reverse=True)
+        logger.info(f"Found {len(scenario_infos_raw)} valid scenarios for project '{project_name}'.")
+        return scenario_infos_raw
+
+    async def _analyze_scenario_directory_async(self, scenario_dir_name: str, scenario_path: Path, project_name: str) -> Optional[ScenarioInfo]:
+        """Asynchronously analyzes a scenario directory for metadata."""
+        import asyncio # Ensure asyncio is imported
+        excel_files_paths = []
+        try:
+            dir_items = await asyncio.to_thread(list, scenario_path.iterdir())
+            for f in dir_items:
+                is_file = await asyncio.to_thread(f.is_file)
+                if is_file and f.suffix == '.xlsx' and not f.name.startswith(('_', '~')):
+                    excel_files_paths.append(f)
+        except OSError as e:
+            logger.error(f"Error iterating scenario directory {scenario_path} for project '{project_name}': {e}")
+            return None
+
+
         year_min, year_max = 2025, 2037 # Defaults
         last_mod_timestamp = 0.0
 
-        if excel_files:
-            for f_path in excel_files[:3]: # Quick scan a few files
+        if excel_files_paths:
+            for f_path in excel_files_paths[:3]: # Quick scan a few files
                 try:
-                    if f_path.stat().st_mtime > last_mod_timestamp:
-                        last_mod_timestamp = f_path.stat().st_mtime
-                    # Simplified year extraction: assumes 'Year' column exists and is numeric
-                    # df_sample = pd.read_excel(f_path, nrows=50, usecols=lambda x: 'year' in str(x).lower())
-                    # if not df_sample.empty and not df_sample.iloc[:, 0].empty:
-                    #     years_in_file = pd.to_numeric(df_sample.iloc[:, 0], errors='coerce').dropna()
-                    #     if not years_in_file.empty:
-                    #         year_min = min(year_min, int(years_in_file.min()))
-                    #         year_max = max(year_max, int(years_in_file.max()))
+                    stat_info = await asyncio.to_thread(f_path.stat)
+                    if stat_info.st_mtime > last_mod_timestamp:
+                        last_mod_timestamp = stat_info.st_mtime
+                    # Simplified year extraction (can be computationally intensive with pd.read_excel)
+                    # For a quick analysis, this part might be omitted or simplified further
+                    # to avoid many blocking pd.read_excel calls even with to_thread.
+                    # Consider storing metadata in a separate JSON if this becomes too slow.
                 except Exception as e_file:
                     logger.debug(f"Could not quickly analyze file {f_path.name} for scenario {scenario_dir_name}: {e_file}")
 
+        if not excel_files_paths: # No data if no excel files
+             return ScenarioInfo(
+                name=scenario_dir_name, path=str(scenario_path),
+                sectors_count=0, year_range={'min': 0, 'max': 0},
+                has_data=False, file_count=0,
+                last_modified_iso=None
+            )
+
         return ScenarioInfo(
-            name=scenario_dir_name, path=str(scenario_path), # Storing path might be a security concern if exposed directly
-            sectors_count=len(excel_files), year_range={'min': year_min, 'max': year_max},
-            has_data=bool(excel_files), file_count=len(excel_files),
-            last_modified_iso=datetime.fromtimestamp(last_mod_timestamp).isoformat() if last_mod_timestamp else None
+            name=scenario_dir_name, path=str(scenario_path),
+            sectors_count=len(excel_files_paths), year_range={'min': year_min, 'max': year_max},
+            has_data=bool(excel_files_paths), file_count=len(excel_files_paths),
+            last_modified_iso=datetime.fromtimestamp(last_mod_timestamp).isoformat() if last_mod_timestamp > 0 else None
         )
 
     async def get_scenario_data(self, project_name: str, scenario_name: str, filters: Optional[Dict] = None) -> ScenarioOutput:
@@ -116,9 +149,13 @@ class DemandVisualizationService:
         Retrieves and processes data for a specific scenario, applying filters.
         Filters example: {'unit': 'GWh', 'start_year': 2025, 'end_year': 2040, 'sectors': ['Residential']}
         """
+        import asyncio # Ensure asyncio is imported
         scenarios_base_path = self._get_scenario_base_path(project_name)
         scenario_path = scenarios_base_path / scenario_name
-        if not scenario_path.exists() or not scenario_path.is_dir():
+
+        path_exists = await asyncio.to_thread(scenario_path.exists)
+        is_dir = await asyncio.to_thread(scenario_path.is_dir)
+        if not path_exists or not is_dir:
             raise FileNotFoundError(f"Scenario '{scenario_name}' not found in project '{project_name}'.")
 
         filters = filters or {}
@@ -131,22 +168,30 @@ class DemandVisualizationService:
         all_years_set = set()
         all_models_set = set()
 
-        for file_path in scenario_path.iterdir():
-            if file_path.is_file() and file_path.suffix == '.xlsx' and not file_path.name.startswith(('_', '~')):
-                sector_name_from_file = file_path.stem # Filename without extension
+        tasks = []
+        try:
+            dir_items = await asyncio.to_thread(list, scenario_path.iterdir())
+        except OSError as e:
+            logger.error(f"Error iterating scenario directory {scenario_path} for data processing: {e}")
+            # Depending on desired behavior, could raise error or return empty output
+            return ScenarioOutput(scenario_name=scenario_name, sectors_data={}, applied_filters=filters, unit=unit)
+
+
+        for file_path in dir_items:
+            is_file = await asyncio.to_thread(file_path.is_file)
+            if is_file and file_path.suffix == '.xlsx' and not file_path.name.startswith(('_', '~')):
+                sector_name_from_file = file_path.stem
                 if selected_sectors_filter and sector_name_from_file not in selected_sectors_filter:
                     continue
+                tasks.append(self._load_and_process_single_sector_file_async(
+                    file_path, sector_name_from_file, unit, start_year_filter, end_year_filter
+                ))
 
-                # sector_data_obj = await asyncio.to_thread( # Run blocking pandas I/O in thread
-                #     self._load_and_process_single_sector_file,
-                #     file_path, sector_name_from_file, unit, start_year_filter, end_year_filter
-                # )
-                sector_data_obj = self._load_and_process_single_sector_file( # Sync for now
-                     file_path, sector_name_from_file, unit, start_year_filter, end_year_filter
-                )
-
+        if tasks:
+            sector_results = await asyncio.gather(*tasks)
+            for sector_data_obj in sector_results:
                 if sector_data_obj:
-                    processed_sectors_data[sector_name_from_file] = sector_data_obj
+                    processed_sectors_data[sector_data_obj.sector_name] = sector_data_obj
                     all_years_set.update(sector_data_obj.years)
                     all_models_set.update(sector_data_obj.models_available)
 
@@ -159,15 +204,21 @@ class DemandVisualizationService:
             unit=unit
         )
 
-    def _load_and_process_single_sector_file(
+    async def _load_and_process_single_sector_file_async(
         self, file_path: Path, sector_name: str, target_unit: str,
         start_year: Optional[int], end_year: Optional[int]
     ) -> Optional[SectorData]:
+        import asyncio # Ensure asyncio is imported
         try:
-            # Determine sheet name (Results or first sheet)
-            with pd.ExcelFile(file_path) as xls:
-                sheet_name = 'Results' if 'Results' in xls.sheet_names else xls.sheet_names[0]
-            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            # Asynchronously read Excel file using pandas in a thread
+            def _read_excel_sync():
+                # Determine sheet name (Results or first sheet)
+                # pd.ExcelFile is also I/O bound
+                xls_file = pd.ExcelFile(file_path)
+                sheet_name_to_read = 'Results' if 'Results' in xls_file.sheet_names else xls_file.sheet_names[0]
+                return pd.read_excel(xls_file, sheet_name=sheet_name_to_read)
+
+            df = await asyncio.to_thread(_read_excel_sync)
 
             year_col_name = next((col for col in df.columns if 'year' in str(col).lower()), None)
             if not year_col_name: return None # No year column
@@ -235,32 +286,49 @@ class DemandVisualizationService:
     # These would typically involve reading/writing small JSON files within the scenario's directory.
     async def save_ui_configuration(self, project_name: str, scenario_name: str, config_type: str, config_data: Dict) -> bool:
         """Saves UI related configuration (e.g., 'model_selection', 'td_losses')."""
+        import asyncio # Ensure asyncio is imported
         scenarios_base_path = self._get_scenario_base_path(project_name)
         scenario_path = scenarios_base_path / scenario_name
-        if not scenario_path.is_dir(): scenario_path.mkdir(parents=True, exist_ok=True)
+
+        is_dir = await asyncio.to_thread(scenario_path.is_dir)
+        if not is_dir:
+            await asyncio.to_thread(scenario_path.mkdir, parents=True, exist_ok=True)
 
         config_file_path = scenario_path / f"{config_type}_config.json"
-        try:
+
+        def _dump_json_sync():
             with open(config_file_path, "w") as f:
                 json.dump(config_data, f, indent=2)
+        try:
+            await asyncio.to_thread(_dump_json_sync)
             logger.info(f"Saved {config_type} config for {project_name}/{scenario_name}.")
             return True
-        except IOError as e:
-            logger.error(f"Failed to save {config_type} config for {project_name}/{scenario_name}: {e}")
+        except IOError as e: # Keep specific IOError for file operations
+            logger.error(f"Failed to save {config_type} config for {project_name}/{scenario_name}: {e}", exc_info=True)
             return False
+        except Exception as e_gen: # Catch other potential errors from to_thread or json serialisation
+            logger.error(f"Unexpected error saving {config_type} config for {project_name}/{scenario_name}: {e_gen}", exc_info=True)
+            return False
+
 
     async def load_ui_configuration(self, project_name: str, scenario_name: str, config_type: str) -> Optional[Dict]:
         """Loads UI related configuration."""
+        import asyncio # Ensure asyncio is imported
         scenarios_base_path = self._get_scenario_base_path(project_name)
         scenario_path = scenarios_base_path / scenario_name
         config_file_path = scenario_path / f"{config_type}_config.json"
 
-        if config_file_path.exists():
-            try:
+        exists = await asyncio.to_thread(config_file_path.exists)
+        if exists:
+            def _load_json_sync():
                 with open(config_file_path, "r") as f:
                     return json.load(f)
-            except (IOError, json.JSONDecodeError) as e:
-                logger.error(f"Failed to load {config_type} config for {project_name}/{scenario_name}: {e}")
+            try:
+                return await asyncio.to_thread(_load_json_sync)
+            except (IOError, json.JSONDecodeError) as e: # Specific errors related to file and JSON
+                logger.error(f"Failed to load {config_type} config for {project_name}/{scenario_name}: {e}", exc_info=True)
+            except Exception as e_gen: # Catch other potential errors
+                logger.error(f"Unexpected error loading {config_type} config for {project_name}/{scenario_name}: {e_gen}", exc_info=True)
         return None
 
     # Consolidated results generation might be complex and could be a separate service or part of job manager

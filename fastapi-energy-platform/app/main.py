@@ -1,33 +1,41 @@
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware # For CORS
+from fastapi.middleware.cors import CORSMiddleware
 import time
 import logging
+import uuid
+from datetime import datetime
 
-# Assuming router and error handlers will be correctly imported
+# Configure logging first
+from app.core.logging import setup_logging
+setup_logging() # Apply logging configuration immediately
+
+# Application-specific imports
+from app.config import settings # Import the Pydantic settings
 from app.api.router import api_router
-# from app.core.config import settings # If you have a Pydantic settings model
-from app.utils.error_handlers import ( # Import custom exceptions and handlers
-    BaseAPIException,
-    # http_exception_handler, # Generic FastAPI HTTPException handler
-    # general_exception_handler, # Catch-all
-    # Specific custom exception handlers if defined and registered separately
-    validation_error_handler, ValidationError,
-    resource_not_found_error_handler, ResourceNotFoundError,
-    business_logic_error_handler, BusinessLogicError,
-    # ... any other custom handlers
+from app.core.exceptions import (
+    AppException,
+    ProjectNotFoundError,
+    ProjectAlreadyExistsError,
+    FileOperationError,
+    InvalidInputDataError,
+    ConfigurationError,
+    ServiceNotAvailableError,
+    JobExecutionError,
+    VisualizationError,
+    ExternalServiceError
 )
+from app.models.common import ErrorResponse, ErrorDetail
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(settings.APP_NAME) # Use app name from settings for logger
 
 # Initialize FastAPI app
-# Title and version can come from settings
 app = FastAPI(
-    title="FastAPI Energy Platform",
-    version="1.0.0",
-    description="Backend API for the Energy Platform, migrated from Flask to FastAPI.",
-    # openapi_url=f"{settings.API_V1_STR}/openapi.json" # Example if using settings
-    openapi_url="/api/v1/openapi.json", # Default if not using settings for this
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    description=settings.APP_DESCRIPTION,
+    openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
     # Add lifespan context manager if needed for startup/shutdown events
     # lifespan=lifespan
 )
@@ -35,19 +43,15 @@ app = FastAPI(
 # === Middleware ===
 
 # CORS Middleware
-# Adjust origins as needed for your frontend URL
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], # Add your frontend origin(s)
+    allow_origins=settings.ALLOWED_ORIGINS, # Use origins from settings
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-import uuid # Moved import to top
-from datetime import datetime # Added for health check timestamp
-
-# Request ID and Process Time Middleware (Example)
+# Request ID and Process Time Middleware
 @app.middleware("http")
 async def add_request_id_process_time(request: Request, call_next):
     request.state.request_id = str(uuid.uuid4())
@@ -56,67 +60,107 @@ async def add_request_id_process_time(request: Request, call_next):
     response = await call_next(request)
 
     process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = f"{process_time:.4f}" # Use f-string
+    response.headers["X-Process-Time"] = f"{process_time:.4f}"
     response.headers["X-Request-ID"] = request.state.request_id
-    logger.info(
-        f"RID: {request.state.request_id} Path: {request.url.path} Method: {request.method} Status: {response.status_code} Time: {process_time:.4f}s"
+
+    # Log request details
+    log_message = (
+        f"RID: {request.state.request_id} "
+        f"Path: {request.url.path} "
+        f"Method: {request.method} "
+        f"Status: {response.status_code} "
+        f"Time: {process_time:.4f}s"
     )
+    # Include query params if any
+    if request.url.query:
+        log_message += f" Query: {request.url.query}"
+
+    logger.info(log_message)
     return response
 
 # === Exception Handlers ===
-# Register your custom exception handlers and generic ones.
-# FastAPI automatically handles its own HTTPException and Pydantic's RequestValidationError.
-# You might want to customize RequestValidationError handling too.
 
-# Using the more specific http_exception_handler from error_handlers.py for BaseAPIException
-# and FastAPI's built-in HTTPException, if defined and registered.
-# Otherwise, FastAPI handles HTTPException by default.
-# For other custom exceptions:
-if 'validation_error_handler' in globals() and 'ValidationError' in globals(): # Check if defined (might be placeholder)
-    app.add_exception_handler(ValidationError, validation_error_handler)
-if 'resource_not_found_error_handler' in globals() and 'ResourceNotFoundError' in globals():
-    app.add_exception_handler(ResourceNotFoundError, resource_not_found_error_handler)
-if 'business_logic_error_handler' in globals() and 'BusinessLogicError' in globals():
-    app.add_exception_handler(BusinessLogicError, business_logic_error_handler)
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    """Handles custom application exceptions (those inheriting from AppException)."""
+    logger.error(f"RID: {getattr(request.state, 'request_id', 'N/A')} - App Exception: {exc.detail}", exc_info=True if exc.status_code == 500 else False)
+    error_detail = ErrorDetail(msg=exc.detail, type=exc.error_type, loc=exc.loc)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(detail=[error_detail]).model_dump(exclude_none=True),
+        headers=exc.headers,
+    )
 
-# It's good practice to have a generic handler for BaseAPIException if specific ones are not caught
-# And a very generic one for Python's Exception (already defined as general_exception_handler)
-# from app.utils.error_handlers import base_api_exception_handler, general_exception_handler
-# app.add_exception_handler(BaseAPIException, base_api_exception_handler)
-# app.add_exception_handler(Exception, general_exception_handler)
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handles FastAPI's RequestValidationError (Pydantic validation errors)."""
+    error_details = []
+    for error in exc.errors():
+        error_details.append(
+            ErrorDetail(
+                loc=list(error["loc"]) if error["loc"] else None, # Ensure loc is a list or None
+                msg=error["msg"],
+                type=error["type"]
+            )
+        )
+    logger.warning(f"RID: {getattr(request.state, 'request_id', 'N/A')} - Validation Error: {exc.errors()}")
+    return JSONResponse(
+        status_code=422, # Unprocessable Entity
+        content=ErrorResponse(detail=error_details).model_dump(exclude_none=True),
+    )
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handles FastAPI's built-in HTTPException."""
+    logger.error(f"RID: {getattr(request.state, 'request_id', 'N/A')} - HTTP Exception: Status {exc.status_code}, Detail: {exc.detail}", exc_info=True if exc.status_code >= 500 else False)
+    error_detail = ErrorDetail(msg=exc.detail, type=exc.__class__.__name__) # Use exception class name as type
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(detail=[error_detail]).model_dump(exclude_none=True),
+        headers=exc.headers,
+    )
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Handles any other unhandled Python exceptions."""
+    request_id = getattr(request.state, 'request_id', 'N/A')
+    logger.critical(f"RID: {request_id} - Unhandled Exception: {exc}", exc_info=True)
+    error_detail = ErrorDetail(
+        msg="An unexpected internal server error occurred.",
+        type=exc.__class__.__name__
+    )
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(detail=[error_detail]).model_dump(exclude_none=True),
+    )
 
 # === Routers ===
-# Include the main API router (which then includes v1, v2, etc.)
-app.include_router(api_router, prefix="/api") # Or settings.API_V1_STR
+app.include_router(api_router, prefix=settings.API_V1_PREFIX) # Use prefix from settings
 
-# Root endpoint
-@app.get("/", summary="Root Endpoint", tags=["General"], include_in_schema=False) # Exclude from OpenAPI docs if it's just informational
+# === Root and Health Endpoints ===
+@app.get("/", summary="Root Endpoint", tags=["General"], include_in_schema=True)
 async def root():
     """Provides basic information about the API."""
     return {
-        "message": "Welcome to the FastAPI Energy Platform API!",
-        "documentation_urls": [app.docs_url, app.redoc_url], # Use app's configured doc URLs
-        "api_version_prefix": "/api" # Or from settings
+        "application": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "description": settings.APP_DESCRIPTION,
+        "documentation_urls": [app.docs_url, app.redoc_url],
+        "api_prefix": settings.API_V1_PREFIX
     }
 
-# Health check endpoint
 @app.get("/health", summary="Health Check", tags=["General"])
 async def health_check():
     """Performs a basic health check of the application."""
-    # In a real app, this might check DB connection, external services, etc.
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "timestamp": datetime.now().isoformat(), "application_version": settings.APP_VERSION}
 
 
-# Example: How settings might be loaded if you use Pydantic's BaseSettings
-# from app.core.config import settings # Assuming settings is your loaded Settings object
-# logger.info(f"API running with title: {settings.PROJECT_NAME}")
+# Initial log message to confirm settings are loaded
+logger.info(f"'{settings.APP_NAME}' version '{settings.APP_VERSION}' is starting up...")
+logger.info(f"Log level set to: {settings.LOG_LEVEL}")
+logger.info(f"Project data root: {settings.PROJECT_DATA_ROOT}")
+logger.info(f"Allowed CORS origins: {settings.ALLOWED_ORIGINS}")
 
-# For development: Uvicorn server startup (if running this file directly)
-# This is usually removed for production builds where Uvicorn is run externally.
-# if __name__ == "__main__":
-#     import uvicorn
-#     # This is for direct execution. `CMD ["uvicorn", "app.main:app"...]` in Dockerfile is preferred for containers.
-#     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
-
-print("FastAPI app (app/main.py) created/updated with basic structure, middleware, and router inclusion.")
+# Ensure the old print statement is removed
+# print("FastAPI app (app/main.py) created/updated with basic structure, middleware, and router inclusion.")
+print(f"FastAPI app '{settings.APP_NAME}' initialized with custom error handlers and configuration.")

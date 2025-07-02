@@ -42,10 +42,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Dependency for DemandVisualizationService ---
-async def get_visualization_service(request: Request):
-    # project_data_root = Path(request.app.state.settings.PROJECT_DATA_ROOT) # Example from global settings
-    project_data_root = Path("user_projects_data") # Placeholder
-    return DemandVisualizationService(project_data_root=project_data_root)
+from app.dependencies import get_demand_visualization_service as get_demand_visualization_service_dependency
+# The local get_visualization_service function is no longer needed.
 
 # --- Pydantic Models ---
 class ScenarioFilters(BaseModel):
@@ -76,7 +74,7 @@ class ConsolidatedPayload(BaseModel):
 @router.get("/{project_name}/scenarios", response_model=List[ScenarioInfo], summary="List Available Scenarios for a Project")
 async def api_get_scenarios(
     project_name: str = FastAPIPath(..., description="The name of the project"),
-    service: DemandVisualizationService = Depends(get_visualization_service)
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
         scenarios = await service.list_available_scenarios(project_name=project_name)
@@ -90,7 +88,7 @@ async def api_get_scenario_data(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
     filters: ScenarioFilters = Depends(), # Query parameters via Pydantic model
-    service: DemandVisualizationService = Depends(get_visualization_service)
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
         # Pydantic model `filters` will have None for fields not provided in query
@@ -109,7 +107,7 @@ async def api_get_comparison_data(
     scenario1: str = Query(..., description="Name of the first scenario for comparison"),
     scenario2: str = Query(..., description="Name of the second scenario for comparison"),
     filters: ScenarioFilters = Depends(),
-    service: DemandVisualizationService = Depends(get_visualization_service)
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
         filter_dict = filters.model_dump(exclude_none=True)
@@ -127,7 +125,7 @@ async def api_get_ui_config(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
     config_type: str = FastAPIPath(..., description="Type of config (e.g., 'model_selection', 'td_losses')"),
-    service: DemandVisualizationService = Depends(get_visualization_service)
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
         config = await service.load_ui_configuration(project_name, scenario_name, config_type)
@@ -146,7 +144,7 @@ async def api_save_ui_config(
     scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
     config_type: str = FastAPIPath(..., description="Type of config (e.g., 'model_selection', 'td_losses')"),
     config_data: Dict[str, Any] = Body(...), # Generic dict for now, can be specific Pydantic models
-    service: DemandVisualizationService = Depends(get_visualization_service)
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     # Add specific validation for config_data based on config_type if needed
     # e.g., if config_type == "model_selection", expect ModelSelectionPayload
@@ -165,7 +163,7 @@ async def api_generate_consolidated_results(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
     payload: ConsolidatedPayload,
-    service: DemandVisualizationService = Depends(get_visualization_service)
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
         result = await service.generate_consolidated_results(

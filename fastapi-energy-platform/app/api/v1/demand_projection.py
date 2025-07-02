@@ -51,13 +51,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Dependency for DemandProjectionService ---
-# This needs project_data_root, which should come from settings or app state.
-async def get_demand_projection_service(request: Request):
-    # Example: project_data_root = Path(request.app.state.settings.PROJECT_DATA_ROOT)
-    # For now, using a placeholder path.
-    project_data_root = Path("user_projects_data") # This MUST be configured correctly
-    return DemandProjectionService(project_data_root=project_data_root)
-
+from app.dependencies import get_demand_projection_service as get_demand_projection_service_dependency
+# The local get_demand_projection_service function is no longer needed.
 
 # --- Pydantic Models for Request/Response ---
 # ForecastJobConfig is already defined in the service, can be reused or a specific API model created.
@@ -75,7 +70,7 @@ class ScenarioNameValidationPayload(BaseModel):
 @router.get("/{project_name}/data_summary", summary="Get Input Data Summary for a Project")
 async def get_data_summary_api(
     project_name: str,
-    service: DemandProjectionService = Depends(get_demand_projection_service)
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     try:
         summary = await service.get_input_data_summary(project_name=project_name)
@@ -92,7 +87,7 @@ async def get_data_summary_api(
 async def get_independent_variables_api(
     project_name: str,
     sector_name: str,
-    service: DemandProjectionService = Depends(get_demand_projection_service)
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     try:
         result = await service.get_independent_variables(project_name=project_name, sector=sector_name)
@@ -107,7 +102,7 @@ async def get_independent_variables_api(
 async def get_correlation_data_api(
     project_name: str,
     sector_name: str,
-    service: DemandProjectionService = Depends(get_demand_projection_service)
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     try:
         result = await service.get_correlation_data(project_name=project_name, sector=sector_name)
@@ -126,7 +121,7 @@ async def run_forecast_api(
     project_name: str,
     payload: RunForecastPayload, # Uses the ForecastJobConfig structure
     background_tasks: BackgroundTasks,
-    service: DemandProjectionService = Depends(get_demand_projection_service)
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     """
     Starts a demand forecasting job for the specified project and configuration.
@@ -210,7 +205,7 @@ async def validate_scenario_name_api(project_name: str, payload: ScenarioNameVal
 async def get_scenario_configuration_api(
     project_name: str,
     scenario_name: str,
-    service: DemandProjectionService = Depends(get_demand_projection_service)
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     try:
         config_data = await service.get_scenario_configuration(project_name=project_name, scenario_name=scenario_name)
@@ -227,7 +222,7 @@ async def get_scenario_configuration_api(
 async def validate_configuration_api(
     project_name: str,
     payload: RunForecastPayload, # Reusing the run forecast payload for validation
-    service: DemandProjectionService = Depends(get_demand_projection_service)
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     """Validates a complete forecast configuration without starting the job."""
     try:

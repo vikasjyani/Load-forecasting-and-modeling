@@ -52,12 +52,17 @@ class LoadProfileAnalysisService:
         ]
         self.export_formats = ['csv', 'xlsx', 'json'] # For exporting analysis results
 
-    def _get_project_specific_analyzer(self, project_name: str) -> LoadProfileAnalyzer:
-        """Helper to get an analyzer instance for a specific project."""
+    async def _get_project_specific_analyzer(self, project_name: str) -> LoadProfileAnalyzer:
+        """Helper to get an analyzer instance for a specific project. (Async version)"""
+        import asyncio # Ensure asyncio is imported
         project_path = self.project_data_root / project_name
-        if not project_path.is_dir():
-            raise ResourceNotFoundError(f"Project '{project_name}' path not found: {project_path}")
-        return LoadProfileAnalyzer(project_path) # Assuming LoadProfileAnalyzer takes project_path
+        is_dir = await asyncio.to_thread(project_path.is_dir)
+        if not is_dir:
+            raise ResourceNotFoundError(f"Project '{project_name}' path not found or is not a directory: {project_path}")
+        # Assuming LoadProfileAnalyzer constructor is lightweight or handles its own async I/O if any.
+        # If its constructor does blocking I/O, it should also be wrapped:
+        # return await asyncio.to_thread(LoadProfileAnalyzer, project_path)
+        return LoadProfileAnalyzer(project_path)
 
     def _is_cache_valid(self, cache_key: str) -> bool:
         if cache_key not in self._cache_timestamps: return False
@@ -66,7 +71,7 @@ class LoadProfileAnalysisService:
     async def get_dashboard_data(self, project_name: str) -> Dict[str, Any]:
         """Get all data needed for the load profile analysis dashboard for a specific project."""
         try:
-            analyzer = self._get_project_specific_analyzer(project_name)
+            analyzer = await self._get_project_specific_analyzer(project_name) # Added await
             profiles = await self.get_available_profiles(project_name) # now async
 
             total_profiles = len(profiles)
@@ -94,29 +99,53 @@ class LoadProfileAnalysisService:
         if self._is_cache_valid(cache_key) and cache_key in self._profile_cache:
             return self._profile_cache[cache_key]
 
+        import asyncio # Ensure asyncio is imported
         try:
-            analyzer = self._get_project_specific_analyzer(project_name)
+            analyzer = await self._get_project_specific_analyzer(project_name) # Added await
             # Assuming analyzer.get_available_profiles() is synchronous. If it does I/O, use to_thread.
-            # profiles_raw = await asyncio.to_thread(analyzer.get_available_profiles)
-            profiles_raw = analyzer.get_available_profiles() # Assuming it's fast or adapted
+            profiles_raw = await asyncio.to_thread(analyzer.get_available_profiles)
+            # profiles_raw = analyzer.get_available_profiles() # Old version
 
             enhanced_profiles = []
+            # Create tasks for async operations within the loop
+            validation_tasks = []
+            profile_refs_for_tasks = []
+
             for profile_dict in profiles_raw:
                 profile_id = profile_dict['profile_id']
-                # Perform quick validation and get file info (potentially async if file ops are heavy)
-                # validation_status = await asyncio.to_thread(self._quick_validate_profile_sync, project_name, profile_id)
-                validation_status = self._quick_validate_profile_sync(project_name, profile_id)
-                profile_dict['validation'] = validation_status
+                validation_tasks.append(self._quick_validate_profile_async(project_name, profile_id))
+                profile_refs_for_tasks.append(profile_dict) # Keep ref to original dict
 
-                # File info and preview
+            validation_results = await asyncio.gather(*validation_tasks, return_exceptions=True)
+
+            file_info_tasks = []
+            profile_refs_for_file_info = []
+
+            for i, profile_dict_ref in enumerate(profile_refs_for_tasks):
+                profile_dict_ref['validation'] = validation_results[i] if not isinstance(validation_results[i], Exception) else {'valid': False, 'error': str(validation_results[i])}
+
+                profile_id = profile_dict_ref['profile_id']
+                # Path construction is sync and quick
                 csv_path = analyzer.results_load_profiles_path / f"{profile_id}.csv"
-                if csv_path.exists():
-                    profile_dict['file_info'] = get_file_info(csv_path) # get_file_info is Path-aware
-                    # Preview can be heavy, consider if needed for list view or make it async
-                    # profile_dict['data_preview'] = await asyncio.to_thread(self._get_data_preview, csv_path)
-                enhanced_profiles.append(profile_dict)
 
-            enhanced_profiles.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+                # Check existence and then get file info
+                exists = await asyncio.to_thread(csv_path.exists)
+                if exists:
+                    file_info_tasks.append(get_file_info(csv_path)) # get_file_info is async
+                    profile_refs_for_file_info.append(profile_dict_ref)
+                else:
+                    profile_dict_ref['file_info'] = {'exists': False, 'message': 'CSV file not found.'}
+
+                enhanced_profiles.append(profile_dict_ref) # Add profile even if file info task is not run
+
+            if file_info_tasks:
+                 file_info_results = await asyncio.gather(*file_info_tasks, return_exceptions=True)
+                 for i, profile_dict_fi_ref in enumerate(profile_refs_for_file_info):
+                     profile_dict_fi_ref['file_info'] = file_info_results[i] if not isinstance(file_info_results[i], Exception) else {'exists': False, 'error': str(file_info_results[i])}
+
+            # Sorting based on 'created_at' which might be in profile_dict or file_info
+            # For now, assuming 'created_at' is part of the profile_dict from analyzer.get_available_profiles()
+            enhanced_profiles.sort(key=lambda x: x.get('created_at', datetime.min.isoformat()), reverse=True)
             self._profile_cache[cache_key] = enhanced_profiles
             self._cache_timestamps[cache_key] = datetime.now().timestamp()
             return enhanced_profiles
@@ -124,14 +153,18 @@ class LoadProfileAnalysisService:
             logger.exception(f"Error getting available profiles for project '{project_name}': {e}")
             return [] # Or raise
 
-    def _quick_validate_profile_sync(self, project_name: str, profile_id: str) -> Dict[str, Any]:
-        """Synchronous quick validation of a profile file."""
-        analyzer = self._get_project_specific_analyzer(project_name)
+    async def _quick_validate_profile_async(self, project_name: str, profile_id: str) -> Dict[str, Any]:
+        """Asynchronously quick validation of a profile file."""
+        import asyncio # Ensure asyncio is imported
+        analyzer = await self._get_project_specific_analyzer(project_name) # await here
         csv_path = analyzer.results_load_profiles_path / f"{profile_id}.csv"
-        if not csv_path.exists():
+
+        exists = await asyncio.to_thread(csv_path.exists)
+        if not exists:
             return {'valid': False, 'error': 'Profile CSV file not found.'}
         try:
-            df_sample = pd.read_csv(csv_path, nrows=10) # Light I/O
+            # Run pd.read_csv in a thread
+            df_sample = await asyncio.to_thread(pd.read_csv, csv_path, nrows=10)
             # ... (rest of validation logic from original)
             has_demand = 'demand' in df_sample.columns
             has_datetime = any('time' in col.lower() or 'date' in col.lower() for col in df_sample.columns)
@@ -148,21 +181,21 @@ class LoadProfileAnalysisService:
 
     async def get_profile_data(self, project_name: str, profile_id: str, filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Get profile data with filtering and processing for a specific project."""
+        import asyncio # Ensure asyncio is imported
         try:
-            analyzer = self._get_project_specific_analyzer(project_name)
-            # df = await asyncio.to_thread(analyzer.load_profile_data, profile_id, filters)
-            df = analyzer.load_profile_data(profile_id, filters) # Assuming adapted or fast
+            analyzer = await self._get_project_specific_analyzer(project_name) # await
+            df = await asyncio.to_thread(analyzer.load_profile_data, profile_id, filters) # Wrap blocking call
 
             if df.empty: raise ProcessingError("No data available after applying filters.")
 
             unit = filters.get('unit', 'kW') if filters else 'kW'
-            # statistics = await asyncio.to_thread(analyzer.calculate_comprehensive_statistics, df, unit)
-            statistics = analyzer.calculate_comprehensive_statistics(df, unit)
+            # Assuming calculate_comprehensive_statistics is CPU-bound and potentially heavy
+            statistics = await asyncio.to_thread(analyzer.calculate_comprehensive_statistics, df, unit)
 
             sample_df = df.head(min(1000, len(df)))
-            # Pandas to_dict can be slow for large dataframes, ensure sample_df is small.
-            # sample_data_records = await asyncio.to_thread(sample_df.to_dict, 'records')
-            sample_data_records = sample_df.to_dict('records') # Convert after sampling
+            # to_dict can be CPU intensive for large dataframes, but sample_df is limited.
+            # If sample_df could still be very wide, this might be considered for to_thread.
+            sample_data_records = sample_df.to_dict('records')
 
             # Convert Timestamps to ISO format strings for JSON serialization
             for record in sample_data_records:
@@ -208,20 +241,18 @@ class LoadProfileAnalysisService:
         if analysis_type not in self.supported_analysis_types:
             raise ValidationError(f"Unsupported analysis type: {analysis_type}")
 
+        import asyncio # Ensure asyncio is imported
         try:
-            analyzer = self._get_project_specific_analyzer(project_name)
+            analyzer = await self._get_project_specific_analyzer(project_name) # await
             filters = parameters.get('filters', {}) if parameters else {}
-            # df = await asyncio.to_thread(analyzer.load_profile_data, profile_id, filters)
-            df = analyzer.load_profile_data(profile_id, filters)
+            df = await asyncio.to_thread(analyzer.load_profile_data, profile_id, filters) # Wrap blocking call
 
             if df.empty: raise ProcessingError("No data for analysis after filters.")
 
             unit = parameters.get('unit', 'kW') if parameters else 'kW'
 
-            # Analysis methods in LoadProfileAnalyzer should be called (potentially via to_thread)
-            # Example: result_data = await asyncio.to_thread(analyzer.generate_analysis_data, df, analysis_type, unit)
-            # For now, assuming generate_analysis_data is adapted or fast
-            result_data = analyzer.generate_analysis_data(df, analysis_type, unit)
+            # Assuming generate_analysis_data is CPU-bound and potentially heavy
+            result_data = await asyncio.to_thread(analyzer.generate_analysis_data, df, analysis_type, unit)
 
             # Add metadata
             result_data['metadata'] = {
@@ -256,7 +287,7 @@ class LoadProfileAnalysisService:
         if export_format not in self.export_formats:
             raise ValidationError(f"Unsupported export format: {export_format}")
 
-        analyzer = self._get_project_specific_analyzer(project_name)
+        analyzer = await self._get_project_specific_analyzer(project_name) # await
         analysis_types_to_export = analysis_types or ['overview', 'statistical'] # Default export
 
         export_data_dict: Dict[str, Any] = {
