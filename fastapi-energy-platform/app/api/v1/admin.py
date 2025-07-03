@@ -41,42 +41,108 @@ router = APIRouter()
 from app.dependencies import get_admin_service as get_admin_service_dependency
 # No longer need the local get_admin_service function, will use Depends(get_admin_service_dependency) directly in routes.
 
-# --- Pydantic Models for Request/Response ---
+from app.models.admin import ( # Import Pydantic models from app.models.admin
+    SystemStatus, StorageInfo, LogEntry, RecentLogsResponse,
+    AdminActionRequest, AdminActionResponse
+)
+# Define more specific Pydantic models for feature flags if needed, or use generic Dict/List
+class FeatureConfig(BaseModel):
+    id: str
+    enabled: bool
+    description: Optional[str] = None
+    category: Optional[str] = None
+    last_modified: Optional[str] = None
+
+class FeatureCategoryResponse(BaseModel):
+    features_by_category: Dict[str, List[FeatureConfig]]
+    feature_groups: Dict[str, List[str]]
+    total_features: int
+    enabled_features_count: int
+    metadata: Dict[str, Any]
+    data_source_project: Optional[str] = None
+    timestamp: str
+    error: Optional[str] = None
+
+
 class FeatureUpdatePayload(BaseModel):
     enabled: bool
 
-class BulkFeatureUpdatePayload(BaseModel):
-    features: Dict[str, FeatureUpdatePayload] # feature_id: {enabled: bool}
-    project_name: Optional[str] = None # Optional project context
+class BulkFeatureUpdateItem(BaseModel): # Renamed from FeatureUpdatePayload to avoid clash if it was global
+    enabled: bool
+
+class BulkFeaturesUpdateRequest(BaseModel):
+    features: Dict[str, BulkFeatureUpdateItem] # feature_id: {enabled: bool}
+    project_name: Optional[str] = None
+
+class BulkFeaturesUpdateResponse(BaseModel):
+    message: str
+    successful_updates: List[Dict[str, Any]]
+    failed_updates: List[Dict[str, Any]]
+
 
 class SystemCleanupPayload(BaseModel):
     type: str = Field(default="logs", description="Type of cleanup: 'logs', 'temp', 'cache', 'all'")
     max_age_days: int = Field(default=30, ge=1, le=365, description="Max age of files to keep for 'logs' or 'temp'")
 
+class SystemCleanupResponse(BaseModel):
+    overall_status: str
+    details: Dict[str, Any]
+    total_files_cleaned: int
+    cleanup_type_requested: str
+    max_age_days_for_logs_temp: int
+    timestamp: str
+    error: Optional[str] = None
+
+class SystemInfoResponse(BaseModel): # Define a more structured response
+    platform: Dict[str, Any]
+    resources: Dict[str, Any]
+    disk: Dict[str, Any]
+    application: Dict[str, Any]
+    timestamp: str
+    error: Optional[str] = None
+
+class SystemHealthResponse(BaseModel): # Define a more structured response
+    overall_health: str
+    cpu_percent: float
+    memory_percent: float
+    memory_available_gb: float
+    disk_percent_project_data: float
+    disk_free_gb_project_data: float
+    application_components_health: Dict[str, Any]
+    active_processes_count: int
+    system_uptime_seconds: float
+    timestamp: str
+    error: Optional[str] = None
+
 
 # --- API Endpoints ---
 
-@router.get("/features", summary="Get Features Configuration")
+@router.get("/features", response_model=FeatureCategoryResponse, summary="Get Features Configuration")
 async def get_features_api(
-    project_name: Optional[str] = None, # Query parameter for project-specific features
+    project_name: Optional[str] = Query(None, description="Optional project name for project-specific features"),
     service: AdminService = Depends(get_admin_service_dependency)
 ):
     """Retrieves the current feature flag configuration, optionally for a specific project."""
     try:
-        features_data = await service.get_features_configuration(project_name=project_name)
-        if "error" in features_data: # Check if service returned an error structure
+        features_data = await service.list_features(project_name=project_name)
+        if "error" in features_data and features_data["error"]:
+            # If service indicates an error in its structure, make it an HTTP error
             raise ProcessingError(message=features_data["error"])
-        return features_data
-    except Exception as e:
+        return FeatureCategoryResponse(**features_data)
+    except ProcessingError as e:
+        # Handle errors that might come from the service layer if it's designed to return them this way
+        # Or, if service raises exceptions directly, this might not be needed.
+        raise HTTPException(status_code=500, detail=str(e.detail if hasattr(e, 'detail') else e))
+    except Exception as e: # Catch-all for unexpected issues
         logger.exception("Error in get_features_api")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
-@router.put("/features/{feature_id}", summary="Update Feature Status")
+@router.put("/features/{feature_id}", summary="Update Feature Status", response_model=Dict[str, Any]) # Define a specific response model later
 async def update_feature_api(
-    feature_id: str,
+    feature_id: str = FastAPIPath(..., description="The ID of the feature to update"),
     payload: FeatureUpdatePayload,
-    project_name: Optional[str] = None, # Query parameter
+    project_name: Optional[str] = Query(None, description="Optional project context for the feature update"),
     service: AdminService = Depends(get_admin_service_dependency)
 ):
     """Enables or disables a specific feature, optionally for a project."""
@@ -85,37 +151,39 @@ async def update_feature_api(
             feature_id, payload.enabled, project_name=project_name
         )
         if not result.get('success'):
-            raise BusinessLogicError(message=result.get('error', 'Failed to update feature'))
+            # Use detail from result if available, else generic message
+            error_detail = result.get('error', f'Failed to update feature {feature_id}')
+            raise ProcessingError(message=error_detail) # Or a more specific error type
         return result
-    except BusinessLogicError as e:
-        raise e # Re-raise to be handled by global exception handler
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e.detail if hasattr(e, 'detail') else e)) # Bad request if processing failed due to input/logic
     except Exception as e:
         logger.exception(f"Error updating feature {feature_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
-@router.post("/features/bulk_update", summary="Bulk Update Feature Statuses")
+@router.post("/features/bulk_update", response_model=BulkFeaturesUpdateResponse, summary="Bulk Update Feature Statuses")
 async def bulk_update_features_api(
-    payload: BulkFeatureUpdatePayload,
+    payload: BulkFeaturesUpdateRequest,
     service: AdminService = Depends(get_admin_service_dependency)
 ):
     """Allows updating multiple feature statuses in a single request."""
     try:
-        # Convert payload to the structure expected by the service
-        features_to_update_service_format: Dict[str, Dict] = {
-            fid: {"enabled": f_payload.enabled} for fid, f_payload in payload.features.items()
+        # Convert payload.features from Dict[str, BulkFeatureUpdateItem] to Dict[str, bool] for service
+        features_to_update_simple: Dict[str, bool] = {
+            fid: item.enabled for fid, item in payload.features.items()
         }
-        result = await service.bulk_update_features(
-            features_updates=features_to_update_service_format,
+        result = await service.bulk_update_features_status(
+            updates=features_to_update_simple,
             project_name=payload.project_name
         )
-        return result
+        return BulkFeaturesUpdateResponse(**result)
     except Exception as e:
         logger.exception("Error in bulk_update_features_api")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during bulk update: {str(e)}")
 
 
-@router.post("/system/cleanup", summary="Perform System Cleanup")
+@router.post("/system/cleanup", response_model=SystemCleanupResponse, summary="Perform System Cleanup")
 async def system_cleanup_api(
     payload: SystemCleanupPayload,
     service: AdminService = Depends(get_admin_service_dependency)
@@ -125,42 +193,44 @@ async def system_cleanup_api(
         cleanup_result = await service.perform_system_cleanup(
             cleanup_type=payload.type, max_age_days=payload.max_age_days
         )
-        if "error" in cleanup_result:
+        if "error" in cleanup_result and cleanup_result["error"]:
             raise ProcessingError(message=cleanup_result["error"])
-        return cleanup_result
+        return SystemCleanupResponse(**cleanup_result)
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e.detail if hasattr(e, 'detail') else e))
     except Exception as e:
         logger.exception("Error in system_cleanup_api")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during system cleanup: {str(e)}")
 
-@router.get("/system/info", summary="Get Comprehensive System Information")
+@router.get("/system/info", response_model=SystemInfoResponse, summary="Get Comprehensive System Information")
 async def system_info_api(service: AdminService = Depends(get_admin_service_dependency)):
     """Retrieves detailed system information, including platform, resources, and application status."""
     try:
         system_info = await service.get_comprehensive_system_info()
-        if "error" in system_info:
+        if "error" in system_info and system_info["error"]:
             raise ProcessingError(message=system_info["error"])
-        return system_info
+        return SystemInfoResponse(**system_info)
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e.detail if hasattr(e, 'detail') else e))
     except Exception as e:
         logger.exception("Error in system_info_api")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
-@router.get("/system/health", summary="Get System Health Metrics")
+@router.get("/system/health", response_model=SystemHealthResponse, summary="Get System Health Metrics")
 async def system_health_api(service: AdminService = Depends(get_admin_service_dependency)):
     """Provides real-time system health metrics (CPU, memory, disk, application health)."""
     try:
         health_data = await service.get_system_health_metrics()
-        if "error" in health_data:
+        if "error" in health_data and health_data["error"]:
             raise ProcessingError(message=health_data["error"])
-        return health_data
+        return SystemHealthResponse(**health_data)
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e.detail if hasattr(e, 'detail') else e))
     except Exception as e:
         logger.exception("Error in system_health_api")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
-# Note: The original Flask blueprint had HTML rendering routes.
-# For a FastAPI backend, these are typically not included if the frontend is separate (e.g., React).
-# If admin UI pages are to be served by FastAPI, they would use HTMLResponse and Jinja2Templates.
-# For now, only API endpoints are translated.
 
-logger.info("Admin API router defined for FastAPI.")
-print("Admin API router defined for FastAPI.")
+logger.info("Admin API router defined for FastAPI, using AdminService.")
+print("Admin API router defined for FastAPI, using AdminService.")

@@ -121,4 +121,52 @@ export default {
 
   // You can also export apiClient directly if needed for custom requests elsewhere
   // apiClientInstance: apiClient
+
+  // PyPSA Endpoints
+  runPyPSAJob: (payload) => apiClient.post('/pypsa/run_simulation', payload),
+  getPyPSAJobStatus: (jobId) => apiClient.get(`/pypsa/job_status/${jobId}`),
+  listPyPSANetworks: (projectName, scenarioName = null) => {
+    let url = `/pypsa/${encodeURIComponent(projectName)}/networks`;
+    if (scenarioName) {
+      url += `?scenario_name=${encodeURIComponent(scenarioName)}`;
+    }
+    return apiClient.get(url);
+  },
+  extractPyPSAData: (projectName, scenarioName, networkFileId, payload) => apiClient.post(`/pypsa/${encodeURIComponent(projectName)}/scenario/${encodeURIComponent(scenario_name)}/network/${encodeURIComponent(networkFileId)}/extract_data`, payload),
+  // Add more PyPSA specific API calls here as service/API develops (get_network_info, compare_networks etc.)
+
+  // Demand Visualization Endpoints
+  listDemandScenarios: (projectName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/scenarios`),
+  getDemandScenarioData: (projectName, scenarioName, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/scenario/${encodeURIComponent(scenarioName)}`, { params: filters }),
+  compareDemandScenarios: (projectName, scenario1Name, scenario2Name, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/comparison`, { params: { scenario1: scenario1Name, scenario2: scenario2Name, ...filters } }),
+  getModelSelectionConfig: (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/model_selection/${encodeURIComponent(scenarioName)}`),
+  saveModelSelectionConfig: (projectName, scenarioName, modelSelection) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/model_selection/${encodeURIComponent(scenarioName)}`, { model_selection: modelSelection }), // FastAPI endpoint expects {"model_selection": {...}}
+  getTdLossesConfig: (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/td_losses/${encodeURIComponent(scenarioName)}`),
+  saveTdLossesConfig: (projectName, scenarioName, tdLosses) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/td_losses/${encodeURIComponent(scenarioName)}`, { td_losses: tdLosses }), // FastAPI endpoint expects {"td_losses": [...]}
+  generateConsolidatedResults: (projectName, scenarioName, payload) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/consolidated_results/${encodeURIComponent(scenarioName)}`, payload),
+  getAnalysisSummary: (projectName, scenarioName, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/analysis_summary/${encodeURIComponent(scenarioName)}`, { params: filters }), // Changed from /analysis to /analysis_summary
+  exportDemandData: async (projectName, scenarioName, dataType = 'consolidated', filters = {}) => {
+    const response = await apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/export/${encodeURIComponent(scenarioName)}`, {
+      params: { data_type: dataType, ...filters },
+      responseType: 'blob', // Important for file downloads
+    });
+    // Trigger file download
+    const-url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `${scenarioName}_${dataType}_export.csv`;
+    if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch && filenameMatch.length === 2)
+            filename = filenameMatch[1];
+    }
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return { success: true, filename: filename };
+  },
+  validateDemandScenario: (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/validate_configurations/${encodeURIComponent(scenarioName)}`), // Changed from /validate to /validate_configurations
 };
