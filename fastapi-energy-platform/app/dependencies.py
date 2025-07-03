@@ -15,6 +15,8 @@ from app.services.demand_visualization_service import DemandVisualizationService
 from app.services.loadprofile_service import LoadProfileService
 from app.services.loadprofile_analysis_service import LoadProfileAnalysisService
 from app.services.admin_service import AdminService
+from app.services.color_service import ColorService # Added
+from app.services.pypsa_service import PypsaService # Added
 
 
 # Dependency to get the application settings
@@ -140,20 +142,47 @@ async def get_load_profile_analysis_service(
     return LoadProfileAnalysisService(project_data_root=project_data_root)
 
 async def get_admin_service(
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings_obj: Annotated[Settings, Depends(get_settings)], # Renamed from settings to avoid clash
     project_data_root: Annotated[Path, Depends(get_project_data_root)]
 ) -> AdminService:
     """
     Dependency to get an instance of AdminService.
 
     Args:
-        settings (Settings): The application settings.
+        settings_obj (Settings): The application settings.
         project_data_root (Path): The root directory for project data.
 
     Returns:
         AdminService: An instance of the admin service.
     """
-    return AdminService(settings=settings, project_data_root=project_data_root)
+    return AdminService(settings=settings_obj, project_data_root=project_data_root)
+
+async def get_color_service() -> ColorService:
+    """
+    Dependency to get an instance of ColorService.
+    ColorService.create() is an async class method that handles its own setup.
+    """
+    return await ColorService.create()
+
+async def get_pypsa_service(
+    project_data_root: Annotated[Path, Depends(get_project_data_root)]
+) -> PypsaService:
+    """
+    Dependency to get an instance of PypsaService.
+    """
+    return PypsaService(project_data_root=project_data_root)
+
+async def get_load_profile_analysis_service(
+    project_data_root: Annotated[Path, Depends(get_project_data_root)],
+    load_profile_service: Annotated[LoadProfileService, Depends(get_load_profile_service)] # Depends on LoadProfileService
+) -> LoadProfileAnalysisService:
+    """
+    Dependency to get an instance of LoadProfileAnalysisService.
+    """
+    return LoadProfileAnalysisService(
+        project_data_root=project_data_root,
+        load_profile_service=load_profile_service
+    )
 
 print("Dependencies defined.")
 # Remove the old print statement

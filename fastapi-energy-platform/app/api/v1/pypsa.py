@@ -40,189 +40,124 @@ pypsa_jobs: Dict[str, Dict[str, Any]] = {} # job_id -> job_details
 
 # --- Network Manager Placeholder ---
 # A proper NetworkManager would handle loading/caching PyPSA networks.
-# For now, direct loading or a very simple cache.
-_network_cache: Dict[str, pypsa.Network] = {}
-_network_mtimes: Dict[str, float] = {}
+import uuid # For job IDs
+from datetime import datetime # For timestamps
 
-async def get_network(project_name: str, scenario_name: str, network_filename: str) -> pypsa.Network:
-    # This path construction needs to be robust and configurable
-    # base_path = Path("user_projects_data") / project_name / "results" / "PyPSA_Modeling" / scenario_name
-    # For now, assume network_filename IS the scenario_name for .nc files
-    # and project_name is part of the base path.
-    # The structure from original pypsa_bp used network_rel_path which was scenario_name/results_year/network.nc
-    # This needs to be harmonized. Let's assume for now network_filename is like "scenario_year_network.nc"
-    # and it's directly under project_name/results/PyPSA_Modeling/
-
-    # This needs to align with where `run_pypsa_model_core` saves NetCDF files.
-    # The core runner saves to project_path/results/PyPSA_Modeling/scenario_name/scenario_name_year_network.nc
-    # So, network_filename should probably be scenario_name_year_network.nc
-    # And the API path might include scenario_name and year or just the full filename.
-
-    # Let's simplify: the API will take project_name, scenario_name, and year.
-    # The service will construct the expected .nc file path.
-    pypsa_results_base = Path("user_projects_data") / project_name / "results" / "PyPSA_Modeling"
-    nc_file_path = pypsa_results_base / scenario_name / f"{scenario_name}_{network_filename}.nc" # network_filename here could be year
-
-    if not nc_file_path.exists():
-        raise ResourceNotFoundError(resource_type="PyPSA Network", resource_id=str(nc_file_path))
-
-    current_mtime = nc_file_path.stat().st_mtime
-    if str(nc_file_path) in _network_cache and _network_mtimes.get(str(nc_file_path)) == current_mtime:
-        logger.info(f"Cache hit for network: {nc_file_path}")
-        return _network_cache[str(nc_file_path)]
-
-    logger.info(f"Loading PyPSA network: {nc_file_path}")
-    try:
-        # network = await asyncio.to_thread(pypsa.Network, str(nc_file_path)) # If pypsa.Network() is blocking
-        network = pypsa.Network(str(nc_file_path)) # Assuming sync for now
-        _network_cache[str(nc_file_path)] = network
-        _network_mtimes[str(nc_file_path)] = current_mtime
-        if len(_network_cache) > 3: # Simple cache size limit
-            oldest_key = next(iter(_network_cache))
-            del _network_cache[oldest_key]
-            del _network_mtimes[oldest_key]
-        return network
-    except Exception as e:
-        logger.exception(f"Error loading network {nc_file_path}")
-        raise ProcessingError(message=f"Failed to load PyPSA network: {str(e)}")
-
-
-# --- Pydantic Models ---
-class PyPSAJobRunPayload(BaseModel):
-    project_name: str
-    scenario_name: str = Field(..., min_length=1, max_length=100)
-    # Include other settings that can be overridden from UI
-    # e.g., snapshot_condition, weightings_freq_hours, base_year_config, etc.
-    # For now, keeping it simple, assuming most settings come from Excel.
-    ui_settings_overrides: Dict[str, Any] = Field(default_factory=dict)
-
-class PyPSADataRequest(BaseModel):
-    # project_name: str # Will be path param
-    # scenario_name: str # Will be path param
-    network_file_identifier: str # e.g., "2025" for year, or full "scenario_2025_network"
-    extraction_function: str
-    filters: Optional[Dict[str, Any]] = None
-    kwargs: Optional[Dict[str, Any]] = None
+# Service and Pydantic models
+from app.services.pypsa_service import PypsaService, pypsa_job_manager # Assuming job manager is global in service file
+from app.models.pypsa import (
+    PyPSAJobRunPayload,
+    PyPSAJobStatusResponse,
+    PyPSANetworkListResponse,
+    PyPSANetworkInfoResponse, # For individual network info if needed by list_available_networks
+    PyPSADataExtractionRequest, # For POST based data extraction
+    PyPSADataResponse
+)
+# --- Dependency for PypsaService ---
+# Assuming a dependency function is defined in app.dependencies
+from app.dependencies import get_pypsa_service as get_pypsa_service_dependency
 
 
 # --- API Endpoints ---
-# Note: HTML rendering routes from Flask blueprint are omitted.
 
-@router.post("/run_model", status_code=202, summary="Run PyPSA Optimization Model")
-async def run_pypsa_model_api(
+@router.post("/run_simulation", status_code=202, response_model=PyPSAJobStatusResponse, summary="Run PyPSA Optimization Model")
+async def run_pypsa_simulation_api(
     payload: PyPSAJobRunPayload,
     background_tasks: BackgroundTasks,
-    # settings: AppSettings = Depends(get_app_settings) # If needed for project_path base
+    service: PypsaService = Depends(get_pypsa_service_dependency)
 ):
     """
     Triggers a PyPSA model optimization run for a given project and scenario.
     The job runs in the background. Use the returned job_id to track status.
-    `ui_settings_overrides` can be used to pass settings from the UI that override
-    those in the PyPSA input Excel template.
     """
-    job_id = str(uuid.uuid4())
-    project_data_root = Path("user_projects_data") # This should come from settings
-    project_path_str = str(project_data_root / payload.project_name)
+    try:
+        job = await service.run_pypsa_simulation(
+            project_name=payload.project_name,
+            scenario_name=payload.scenario_name,
+            ui_settings_overrides=payload.ui_settings_overrides,
+            background_tasks=background_tasks
+        )
+        # Convert PyPSAJob dataclass to PyPSAJobStatusResponse Pydantic model for response
+        return PyPSAJobStatusResponse(**job.__dict__) # Or map fields explicitly
+    except Exception as e:
+        logger.exception(f"Error initiating PyPSA simulation for project {payload.project_name}, scenario {payload.scenario_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to start PyPSA simulation: {str(e)}")
 
-    pypsa_jobs[job_id] = {
-        "id": job_id, "status": "Queued", "progress": 0, "log": [],
-        "scenario_name": payload.scenario_name, "project_path": project_path_str,
-        "start_time": datetime.now().isoformat()
-    }
-
-    # run_pypsa_model_core is synchronous and CPU-bound.
-    # It should be run in a separate process or thread pool to not block FastAPI.
-    # BackgroundTasks.add_task runs it in the same event loop if the function is async,
-    # or in a threadpool if the function is sync (FastAPI default for sync route handlers).
-    # For truly CPU-bound tasks, ProcessPoolExecutor is better if GIL is an issue.
-    # For now, using BackgroundTasks which will use a threadpool for the sync function.
-    background_tasks.add_task(
-        run_pypsa_model_core,
-        job_id,
-        project_path_str,
-        payload.scenario_name,
-        payload.ui_settings_overrides,
-        pypsa_jobs # Pass the shared job store
-    )
-
-    logger.info(f"PyPSA job {job_id} queued for project '{payload.project_name}', scenario '{payload.scenario_name}'.")
-    return {
-        "message": "PyPSA model run initiated.",
-        "job_id": job_id,
-        "status_url": f"/api/v1/pypsa/job_status/{job_id}" # Example
-    }
-
-@router.get("/job_status/{job_id}", summary="Get PyPSA Job Status")
-async def get_pypsa_job_status_api(job_id: str):
-    job = pypsa_jobs.get(job_id)
+@router.get("/job_status/{job_id}", response_model=PyPSAJobStatusResponse, summary="Get PyPSA Job Status")
+async def get_pypsa_job_status_api(
+    job_id: str = FastAPIPath(..., description="ID of the PyPSA simulation job"),
+    service: PypsaService = Depends(get_pypsa_service_dependency) # Service might not be needed if job_manager is global
+):
+    job = await pypsa_job_manager.get_job(job_id) # Accessing global job manager
     if not job:
-        raise ResourceNotFoundError(resource_type="PyPSA Job", resource_id=job_id)
-    # Potentially add more details like elapsed time, current step from job dict
-    return {
-        "job_id": job_id,
-        "status": job.get("status"),
-        "progress": job.get("progress"),
-        "current_step": job.get("current_step"),
-        "log_summary": job.get("log", [])[-5:], # Last 5 log entries
-        "error": job.get("error")
-    }
+        raise HTTPException(status_code=404, detail=f"PyPSA Job with ID '{job_id}' not found.")
+    return PyPSAJobStatusResponse(**job.__dict__)
 
-@router.get("/{project_name}/scenario/{scenario_name}/network/{network_file_id}/extract_data", summary="Extract Data from PyPSA Network")
-async def extract_pypsa_data_api(
-    project_name: str = FastAPIPath(..., description="Project name"),
-    scenario_name: str = FastAPIPath(..., description="Scenario name within the project"),
-    network_file_id: str = FastAPIPath(..., description="Identifier for the network file (e.g., year or full name part)"),
-    extraction_func_name: str = Query(..., description="Name of the extraction function from pypsa_analysis_utils"),
-    # Filters and kwargs can be passed as part of the query string or a JSON body if complex
-    # For simplicity with GET, using Query for some common filters.
-    resolution: Optional[str] = Query("1H", description="Time resolution for data, e.g., '1H', 'D', 'W', 'M', 'Y'"),
-    period: Optional[str] = Query(None, description="Specific period/year if network is multi-period"),
-    # For more complex filters/kwargs, a POST with JSON body would be better.
-    # For now, we assume they are simple enough for query or handled by service defaults.
+
+@router.get("/{project_name}/networks", response_model=PyPSANetworkListResponse, summary="List Available PyPSA Networks/Scenarios")
+async def list_available_networks_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: Optional[str] = Query(None, description="Optional: Specific scenario name to list its network files. If None, lists scenario folders."),
+    service: PypsaService = Depends(get_pypsa_service_dependency)
 ):
     try:
-        network = await get_network(project_name, scenario_name, network_file_id)
+        network_infos = await service.list_available_network_files(project_name, scenario_name)
+        # Convert list of PyPSANetworkInfo dataclasses to list of PyPSANetworkInfoResponse Pydantic models
+        response_networks = [PyPSANetworkInfoResponse(**info.__dict__) for info in network_infos]
+        return PyPSANetworkListResponse(project_name=project_name, scenario_name=scenario_name, networks=response_networks)
+    except Exception as e:
+        logger.exception(f"Error listing PyPSA networks for project {project_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to list networks: {str(e)}")
 
-        if not hasattr(pau, extraction_func_name):
-            raise CustomValidationError(message=f"Unknown extraction function: {extraction_func_name}")
 
-        func_to_call = getattr(pau, extraction_func_name)
+# Placeholder for /extract_data - This needs more design on how filters/kwargs are passed
+# and how the service's NetworkManager and DataExtractionComponent are used.
+# The Flask version had GET with path params; POST with a body is more flexible.
+@router.post("/{project_name}/scenario/{scenario_name}/network/{network_file_id}/extract_data",
+             response_model=PyPSADataResponse, # Define this Pydantic model
+             summary="Extract Data from a Specific PyPSA Network")
+async def extract_pypsa_data_api(
+    project_name: str = FastAPIPath(..., description="Project name"),
+    scenario_name: str = FastAPIPath(..., description="Scenario name"),
+    network_file_id: str = FastAPIPath(..., description="Network file identifier (e.g., year or run ID)"),
+    payload: PyPSADataExtractionRequest,
+    service: PypsaService = Depends(get_pypsa_service_dependency)
+):
+    try:
+        # network = await service.load_network(project_name, scenario_name, payload.network_file_identifier) # Needs service method
+        # data = await service.extract_data(network, payload.extraction_function_name, payload.filters, **payload.kwargs)
+        # For now, placeholder as service methods are not fully there.
+        logger.warning("PyPSA /extract_data endpoint called but service methods for network loading and data extraction are not fully implemented.")
+        raise HTTPException(status_code=501, detail="Data extraction from PyPSA network not fully implemented yet.")
 
-        # Prepare arguments for the extraction function
-        # Snapshots slice can be derived from query params if needed (e.g. start_date, end_date)
-        # For now, passing None, which means all snapshots in the loaded network.
-        # This is where filters and kwargs from the request would be processed.
-        call_kwargs = {"resolution": resolution, "period": period} # Example
+        # Example of how it might look once service is ready:
+        # network_full_path = service._get_pypsa_results_path(project_name, scenario_name) / network_file_id
+        # # ^ This path logic needs to be robust in service
+        # if not await asyncio.to_thread(network_full_path.exists):
+        #     raise HTTPException(status_code=404, detail=f"Network file {network_file_id} not found.")
 
-        # Data extraction functions in pau might be sync; run in threadpool.
-        # result_data = await asyncio.to_thread(func_to_call, n=network, snapshots_slice=None, **call_kwargs)
-        result_data = func_to_call(n=network, snapshots_slice=None, **call_kwargs) # Assuming sync for now
+        # # This part would use the NetworkManager and DataExtractor components within the service
+        # extracted_data_dict = await service.get_network_data(
+        #     project_name, scenario_name, network_file_id,
+        #     payload.extraction_function_name, payload.filters, **payload.kwargs
+        # )
+        # return PyPSADataResponse(data=extracted_data_dict['data'], colors=extracted_data_dict.get('colors'), metadata=extracted_data_dict['metadata'])
 
-        # Color palette
-        colors = {}
-        if hasattr(pau, 'get_color_palette'):
-            colors = pau.get_color_palette(network)
-
-        return {
-            "data": result_data, # pau functions should return JSON-serializable dicts
-            "colors": colors,
-            "metadata": {
-                "project": project_name, "scenario": scenario_name, "network_file": network_file_id,
-                "extraction_function": extraction_func_name, "params": call_kwargs
-            }
-        }
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e.detail if isinstance(e.detail, str) else e.detail.get("message")))
-    except CustomValidationError as e:
+    except CustomValidationError as e: # If service raises validation error
         raise HTTPException(status_code=422, detail=e.detail)
+    except ProcessingError as e: # If service raises processing error
+        raise HTTPException(status_code=500, detail=e.detail)
     except Exception as e:
         logger.exception(f"Error extracting PyPSA data for {project_name}/{scenario_name}/{network_file_id}")
         raise HTTPException(status_code=500, detail=f"Data extraction failed: {str(e)}")
 
 
-# Omitted: /api/available_networks, /api/system_status from Flask blueprint.
-# These would involve scanning filesystem or system introspection, which can be complex
-# and might be better suited for an admin/management part of the API or a separate service.
+# TODO: Implement endpoints for:
+# - /api/network_info/<path:network_rel_path> -> GET /{project_name}/scenario/{scenario_name}/network/{network_file_id}/info
+# - /api/compare_networks -> POST /{project_name}/compare_networks
+# - /api/system_status -> GET /pypsa_system_status (might be more general admin endpoint)
 
-logger.info("PyPSA API router defined for FastAPI.")
-print("PyPSA API router defined for FastAPI.")
+logger.info("PyPSA API router updated for FastAPI with Job Management and Network Listing.")
+print("PyPSA API router updated for FastAPI with Job Management and Network Listing.")
