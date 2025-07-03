@@ -18,121 +18,261 @@ from fastapi import UploadFile # For type hinting, actual upload handling is in 
 # Assuming models and utilities are adapted for FastAPI
 # from app.models.load_profile_generator import LoadProfileGenerator # Needs to be Path-aware
 # For now, let's assume a placeholder or simplified generator
+# Actual LoadProfileGenerator logic will be more complex and handle real data processing.
+# from app.models.load_profile_generator import LoadProfileGenerator # This needs to be Path-aware and potentially async-friendly
+
 from app.utils.helpers import get_file_info, ensure_directory, safe_filename # Path-aware
 from app.utils.constants import VALIDATION_RULES, UNIT_FACTORS # Check relevance
 from app.utils.error_handlers import ValidationError, ProcessingError, ResourceNotFoundError
+import app.utils.load_profile_engine as lp_engine # Assuming this contains core algorithms
 
 logger = logging.getLogger(__name__)
 
-# Placeholder for LoadProfileGenerator if it's not refactored yet
-class PlaceholderLoadProfileGenerator:
+
+class ProjectLoadProfileManager: # Renamed from PlaceholderLoadProfileGenerator for clarity
+    """
+    Manages load profile data and generation for a specific project.
+    This class will contain the actual logic for file I/O and calling generation algorithms.
+    """
     def __init__(self, project_path: Path):
         self.project_path = project_path
         self.inputs_path = project_path / "inputs"
         self.results_profiles_path = project_path / "results" / "load_profiles"
-        self.config_path = project_path / "config"
+        # Config path for metadata related to this project's load profiles
+        self.profiles_config_path = project_path / "config" / "load_profiles"
+
+        # Ensure directories exist (can be done once at project creation/loading)
+        # For this service, we assume they might need creation if accessed.
+        # These are synchronous but generally quick. If they become an issue, make them async.
         ensure_directory(self.inputs_path)
         ensure_directory(self.results_profiles_path)
-        ensure_directory(self.config_path)
-        logger.info(f"PlaceholderLoadProfileGenerator initialized for project: {project_path}")
+        ensure_directory(self.profiles_config_path)
+        logger.info(f"ProjectLoadProfileManager initialized for project: {project_path}")
 
-    async def load_template_data(self) -> Dict[str, Any]: # Mock implementation, made async
-        logger.debug(f"Loading template data (mock) from {self.inputs_path / 'load_curve_template.xlsx'}")
-        # In a real scenario, pd.read_excel would be here, wrapped in to_thread
-        # For mock, just return:
-        await asyncio.sleep(0) # Simulate async nature if it were real I/O
-        return {"historical_demand": pd.DataFrame(), "total_demand": pd.DataFrame(), "monthly_peaks": None, "calculated_monthly_peaks": None, "monthly_load_factors": None, "calculated_load_factors": None, "template_info": {}}
+    async def get_template_file_path(self) -> Path:
+        return self.inputs_path / 'load_curve_template.xlsx'
 
-    async def get_available_base_years(self, historical_df: pd.DataFrame) -> List[int]: # Mock, async for consistency
-        await asyncio.sleep(0)
-        if not historical_df.empty and 'financial_year' in historical_df.columns:
-            return sorted(historical_df['financial_year'].unique().tolist())
-        return [2020, 2021, 2022] # Default mock
+    async def load_template_data(self) -> Dict[str, Any]:
+        template_path = await self.get_template_file_path()
+        exists = await asyncio.to_thread(template_path.exists)
+        if not exists:
+            raise ResourceNotFoundError(f"Load curve template not found at {template_path}")
+        try:
+            # Assuming lp_engine.analyze_template is synchronous and needs to_thread
+            # It should return a dict with DataFrames and analysis results.
+            # Example: {'historical_df': pd.DataFrame, 'analysis': {...}}
+            template_analysis_result = await asyncio.to_thread(lp_engine.analyze_template, str(template_path))
+            logger.info(f"Successfully loaded and analyzed template: {template_path.name}")
+            return template_analysis_result # This should include DataFrames and summary info
+        except Exception as e:
+            logger.error(f"Error loading or analyzing template {template_path.name}: {e}", exc_info=True)
+            raise ProcessingError(f"Failed to process template file: {str(e)}")
 
-    async def generate_base_profile_forecast(self, **kwargs) -> Dict[str, Any]: # Mock, async
-        logger.debug(f"Generating base profile forecast (mock) with args: {kwargs.get('base_year')}, {kwargs.get('start_fy')}-{kwargs.get('end_fy')}")
-        await asyncio.sleep(0) # Simulate work
-        return {"status": "success", "data": {"load_profile": pd.DataFrame([{'timestamp': datetime.now().isoformat(), 'demand': 100}]), "method": "base_mock", "years_generated": [kwargs.get('start_fy')], "frequency": "hourly", "constraints_applied": False}}
 
-    async def generate_stl_forecast(self, **kwargs) -> Dict[str, Any]: # Mock, async
-        logger.debug(f"Generating STL profile forecast (mock) with args: {kwargs.get('start_fy')}-{kwargs.get('end_fy')}")
-        await asyncio.sleep(0) # Simulate work
-        return {"status": "success", "data": {"load_profile": pd.DataFrame([{'timestamp': datetime.now().isoformat(), 'demand': 120}]), "method": "stl_mock", "years_generated": [kwargs.get('start_fy')], "frequency": "hourly", "constraints_applied": False}}
+    async def get_available_base_years(self) -> List[int]:
+        template_data = await self.load_template_data()
+        historical_df = template_data.get('historical_df') # Assuming key from analyze_template
+        if historical_df is not None and not historical_df.empty and 'financial_year' in historical_df.columns:
+             # Ensure years are integers and unique
+            return sorted([int(y) for y in historical_df['financial_year'].unique()])
+        logger.warning(f"Could not determine base years from template for project {self.project_path.name}")
+        return [] # Return empty or default if no data
 
-    async def save_forecast(self, forecast_data: Dict[str, Any], profile_id: Optional[str] = None) -> Dict[str, Any]: # Async
+    async def generate_base_profile_forecast(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info(f"Generating base profile for project {self.project_path.name} with config: {config}")
+        # This will call the core logic from lp_engine or similar module
+        logger.info(f"Generating base profile for project {self.project_path.name} with config: {config}")
+
+        template_path_str = str(await self.get_template_file_path())
+        demand_scenario_df = None
+        if config.get("demand_source") == "scenario" and config.get("scenario_name"):
+            try:
+                demand_scenario_df = await self.load_demand_scenario_data(config["scenario_name"])
+            except ResourceNotFoundError as e:
+                raise ProcessingError(f"Demand scenario '{config['scenario_name']}' not found for base profile generation: {e}")
+
+        try:
+            # Assuming lp_engine.run_base_profile_scaling returns a DataFrame
+            result_df = await asyncio.to_thread(
+                lp_engine.run_base_profile_scaling, # Ensure this function exists and is imported
+                template_path=template_path_str,
+                historical_data=config.get("historical_data"), # Must be passed in or loaded by engine
+                demand_scenarios=demand_scenario_df, # Pass loaded scenario DataFrame
+                base_year=int(config['base_year']),
+                start_fy=int(config['start_fy']),
+                end_fy=int(config['end_fy']),
+                frequency=config.get('frequency', 'hourly'),
+                constraints=config.get('constraints')
+            )
+            logger.info(f"Base profile scaling completed for project {self.project_path.name}, scenario {config.get('scenario_name', 'N/A')}")
+            return {
+                "status": "success",
+                "data": {
+                    "load_profile_df": result_df,
+                    "method": "base_profile_scaling",
+                    "config_snapshot": config, # Store the input config for metadata
+                    "years_generated": list(range(int(config['start_fy']), int(config['end_fy']) + 1)),
+                    "frequency": config.get('frequency', 'hourly')
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error during base profile scaling for project {self.project_path.name}: {e}", exc_info=True)
+            raise ProcessingError(f"Base profile generation failed: {str(e)}")
+
+
+    async def generate_stl_forecast(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info(f"Generating STL profile for project {self.project_path.name} with config: {config}")
+
+        template_path_str = str(await self.get_template_file_path())
+        demand_scenario_df = None
+        if config.get("demand_source") == "scenario" and config.get("scenario_name"):
+            try:
+                demand_scenario_df = await self.load_demand_scenario_data(config["scenario_name"])
+            except ResourceNotFoundError as e:
+                raise ProcessingError(f"Demand scenario '{config['scenario_name']}' not found for STL profile generation: {e}")
+
+        try:
+            # Assuming lp_engine.run_stl_decomposition returns a DataFrame
+            result_df = await asyncio.to_thread(
+                lp_engine.run_stl_decomposition, # Ensure this function exists and is imported
+                template_path=template_path_str,
+                historical_data=config.get("historical_data"), # Must be passed in or loaded by engine
+                demand_scenarios=demand_scenario_df, # Pass loaded scenario DataFrame
+                start_fy=int(config['start_fy']),
+                end_fy=int(config['end_fy']),
+                frequency=config.get('frequency', 'hourly'),
+                stl_params=config.get('stl_params', {}),
+                constraints=config.get('constraints')
+            )
+            logger.info(f"STL decomposition completed for project {self.project_path.name}, scenario {config.get('scenario_name', 'N/A')}")
+            return {
+                "status": "success",
+                "data": {
+                    "load_profile_df": result_df,
+                    "method": "stl_decomposition",
+                    "config_snapshot": config, # Store the input config
+                    "years_generated": list(range(int(config['start_fy']), int(config['end_fy']) + 1)),
+                    "frequency": config.get('frequency', 'hourly')
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error during STL decomposition for project {self.project_path.name}: {e}", exc_info=True)
+            raise ProcessingError(f"STL profile generation failed: {str(e)}")
+
+
+    async def save_generated_profile(self, profile_data_dict: Dict[str, Any], profile_id: Optional[str] = None) -> Dict[str, Any]:
         if not profile_id:
-            profile_id = f"mockprofile_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            method_abbr = profile_data_dict.get("method", "custom")[:4].lower()
+            profile_id = f"lp_{method_abbr}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-        df_to_save = forecast_data.get('load_profile', pd.DataFrame())
-        if not isinstance(df_to_save, pd.DataFrame):
-             df_to_save = pd.DataFrame(df_to_save)
+        profile_id = safe_filename(profile_id) # Sanitize
+
+        df_to_save = profile_data_dict.get('load_profile_df')
+        if not isinstance(df_to_save, pd.DataFrame) or df_to_save.empty:
+             raise ProcessingError("No load profile data found to save.")
 
         file_path = self.results_profiles_path / f"{profile_id}.csv"
         await asyncio.to_thread(df_to_save.to_csv, file_path, index=False)
 
         metadata = {
-            "profile_id": profile_id, "method": forecast_data.get("method", "unknown"),
-            "created_at": datetime.now().isoformat(), "source_config": forecast_data.get("config_snapshot"),
-            "years": forecast_data.get("years_generated"), "frequency": forecast_data.get("frequency")
+            "profile_id": profile_id,
+            "project_name": self.project_path.name,
+            "method_used": profile_data_dict.get("method", "unknown"),
+            "generation_config": profile_data_dict.get("config_snapshot"),
+            "years_generated": profile_data_dict.get("years_generated"),
+            "frequency": profile_data_dict.get("frequency"),
+            "created_at": datetime.now().isoformat(),
+            "original_filename": profile_data_dict.get("original_filename"), # If uploaded
+            "source_description": profile_data_dict.get("source_description", "Generated by system")
         }
-        metadata_file_path = self.config_path / f"{profile_id}_metadata.json"
+        metadata_file_path = self.profiles_config_path / f"{profile_id}_meta.json" # Changed suffix
 
         def _dump_json_sync():
             with open(metadata_file_path, "w") as f:
                 json.dump(metadata, f, indent=2)
         await asyncio.to_thread(_dump_json_sync)
 
-        logger.info(f"Saved mock forecast {profile_id} to {file_path}")
-        return {"profile_id": profile_id, "file_path": str(file_path), "metadata_path": str(metadata_file_path)}
+        logger.info(f"Saved generated profile '{profile_id}' for project '{self.project_path.name}' to {file_path}")
+        return {"profile_id": profile_id, "file_path": str(file_path), "metadata_path": str(metadata_file_path), "metadata": metadata}
 
-    async def get_saved_profiles(self) -> List[Dict[str, Any]]: # Async
-        profiles = []
-        # Run glob in a thread as it can do I/O
+    async def get_saved_profiles_metadata(self) -> List[Dict[str, Any]]:
+        profiles_meta = []
         try:
-            meta_files = await asyncio.to_thread(list, self.config_path.glob("*_metadata.json"))
+            meta_files = await asyncio.to_thread(list, self.profiles_config_path.glob("*_meta.json"))
         except OSError as e:
-            logger.error(f"Error globbing metadata files in {self.config_path}: {e}")
+            logger.error(f"Error globbing metadata files in {self.profiles_config_path} for project {self.project_path.name}: {e}")
             return []
 
         for meta_file_path in meta_files:
             try:
                 def _load_json_sync():
-                    with open(meta_file_path, "r") as f:
-                        return json.load(f)
-                profiles.append(await asyncio.to_thread(_load_json_sync))
+                    with open(meta_file_path, "r") as f: return json.load(f)
+                meta_content = await asyncio.to_thread(_load_json_sync)
+
+                # Add file info for the CSV
+                csv_path = self.results_profiles_path / f"{meta_content['profile_id']}.csv"
+                csv_exists = await asyncio.to_thread(csv_path.exists)
+                if csv_exists:
+                    meta_content['file_info'] = await get_file_info(csv_path)
+                else:
+                    meta_content['file_info'] = {'exists': False, 'error': 'CSV data file missing.'}
+                profiles_meta.append(meta_content)
+
             except (IOError, json.JSONDecodeError) as e_json:
                  logger.warning(f"Could not load or parse metadata file {meta_file_path.name}: {e_json}")
-            except Exception as e_gen: # Catch any other unexpected error
-                 logger.error(f"Unexpected error reading metadata file {meta_file_path.name}: {e_gen}", exc_info=True)
-        logger.debug(f"Found {len(profiles)} saved mock profiles.")
-        return profiles
+            except Exception as e_gen:
+                 logger.error(f"Unexpected error reading metadata {meta_file_path.name}: {e_gen}", exc_info=True)
+        logger.debug(f"Found {len(profiles_meta)} saved profiles for project {self.project_path.name}.")
+        return profiles_meta
 
-    async def get_profile_data(self, profile_id: str) -> Dict[str, Any]: # Async
-        meta_path = self.config_path / f"{profile_id}_metadata.json"
+    async def get_profile_data_with_metadata(self, profile_id: str) -> Dict[str, Any]:
+        profile_id = safe_filename(profile_id)
+        meta_path = self.profiles_config_path / f"{profile_id}_meta.json"
         csv_path = self.results_profiles_path / f"{profile_id}.csv"
 
         meta_exists = await asyncio.to_thread(meta_path.exists)
+        if not meta_exists:
+            raise ResourceNotFoundError(f"Metadata for profile '{profile_id}' not found in project '{self.project_path.name}'.")
+
         csv_exists = await asyncio.to_thread(csv_path.exists)
+        if not csv_exists:
+            raise ResourceNotFoundError(f"Data CSV for profile '{profile_id}' not found in project '{self.project_path.name}'.")
 
-        if meta_exists and csv_exists:
-            def _load_files_sync():
-                with open(meta_path, "r") as f_meta:
-                    metadata = json.load(f_meta)
-                df_data = pd.read_csv(csv_path)
-                return {"metadata": metadata, "data": df_data.to_dict("records")}
+        def _load_files_sync():
+            with open(meta_path, "r") as f_meta: metadata = json.load(f_meta)
+            # Assuming CSV has 'timestamp' and 'demand_kw' or similar
+            df_data = pd.read_csv(csv_path, parse_dates=['timestamp'])
+            return {"metadata": metadata, "data_records": df_data.to_dict("records")}
 
-            loaded_content = await asyncio.to_thread(_load_files_sync)
-            logger.debug(f"Loaded mock profile data for {profile_id}.")
-            return loaded_content
-        raise ResourceNotFoundError(f"Mock profile {profile_id} (or its data/metadata) not found.")
+        loaded_content = await asyncio.to_thread(_load_files_sync)
+        logger.debug(f"Loaded profile data and metadata for '{profile_id}' in project '{self.project_path.name}'.")
+        return loaded_content
 
-    async def load_scenario_data(self, scenario_csv_path: Path) -> pd.DataFrame: # Async
+    async def delete_profile_files(self, profile_id: str) -> List[str]:
+        profile_id = safe_filename(profile_id)
+        files_deleted_log = []
+        csv_path = self.results_profiles_path / f"{profile_id}.csv"
+        meta_path = self.profiles_config_path / f"{profile_id}_meta.json"
+
+        csv_exists = await asyncio.to_thread(csv_path.exists)
+        if csv_exists:
+            await asyncio.to_thread(csv_path.unlink)
+            files_deleted_log.append(str(csv_path))
+
+        meta_exists = await asyncio.to_thread(meta_path.exists)
+        if meta_exists:
+            await asyncio.to_thread(meta_path.unlink)
+            files_deleted_log.append(str(meta_path))
+        return files_deleted_log
+
+    async def load_demand_scenario_data(self, scenario_name: str) -> pd.DataFrame:
+        # Path to where demand projection scenarios are stored for this project
+        scenario_csv_path = self.project_path / "results" / "demand_projection" / safe_filename(scenario_name) / "consolidated_results.csv"
         exists = await asyncio.to_thread(scenario_csv_path.exists)
         if exists:
-            logger.debug(f"Loading mock scenario data from {scenario_csv_path}")
-            # Run pd.read_csv in a thread
-            return await asyncio.to_thread(pd.read_csv, scenario_csv_path)
-        return pd.DataFrame()
+            logger.debug(f"Loading demand scenario data from {scenario_csv_path} for project {self.project_path.name}")
+            return await asyncio.to_thread(pd.read_csv, scenario_csv_path) # Assuming CSV format
+        raise ResourceNotFoundError(f"Demand scenario '{scenario_name}' (consolidated_results.csv) not found for project {self.project_path.name}")
 
 
 class LoadProfileService:
@@ -270,59 +410,58 @@ class LoadProfileService:
 
     async def generate_profile(self, project_name: str, generation_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a load profile (base or STL) for a project."""
-        # Validation should ideally happen at the Pydantic model level in the router,
-        # but can also be done here for business logic specific checks.
-        # validation_result = self.validate_generation_request(config, generation_type) # Assuming this method exists & is adapted
-        # if not validation_result['valid']:
-        #     raise ValidationError(f"Invalid generation request: {validation_result['errors']}")
+        generator = await self._get_project_generator(project_name)
 
-        generator = await self._get_project_generator(project_name) # await
+        # Load necessary base data (template data for historical info)
+        # This is loaded once and passed into the config for manager methods
+        try:
+            template_data = await generator.load_template_data()
+            historical_data_df = template_data.get('historical_df')
+            if historical_data_df is None: # Check if historical_df key exists and is not None
+                historical_data_df = pd.DataFrame() # Ensure it's a DataFrame
 
-        # Prepare demand scenarios from config
-        demand_source = config.get('demand_source', 'template')
-        demand_scenarios_df: pd.DataFrame
-        if demand_source == 'template':
-            template_data = await generator.load_template_data() # await
-            demand_scenarios_df = template_data.get('total_demand', pd.DataFrame())
-        elif demand_source == 'scenario':
-            scenario_name = config.get('scenario_name')
-            if not scenario_name: raise ValidationError("Scenario name required for scenario-based demand.")
-            # Construct path to the scenario's consolidated results
-            scenario_csv_path = self.project_data_root / project_name / "results" / "demand_projection" / scenario_name / "consolidated_results.csv"
-            demand_scenarios_df = await generator.load_scenario_data(scenario_csv_path) # await
-        else:
-            raise ValidationError(f"Invalid demand_source: {demand_source}")
+            # Add historical_data to the config that will be passed to manager's generation methods
+            # The manager methods themselves will decide if/how to use it or the template_path
+            config_for_generation = config.copy()
+            config_for_generation['historical_data'] = historical_data_df
+            # No need to pass demand_scenarios_df directly here, manager's methods will load it if 'scenario' source
 
-        template_data_for_hist = await generator.load_template_data() # await, potentially cache this call
-        historical_data_df = template_data_for_hist.get('historical_demand', pd.DataFrame())
+        except ResourceNotFoundError as e:
+            logger.error(f"Template file missing for project {project_name}, cannot generate profile. Error: {e}")
+            raise ProcessingError(f"Cannot generate profile: Load curve template not found for project '{project_name}'.")
+        except Exception as e:
+            logger.error(f"Error loading template data for profile generation in project {project_name}: {e}", exc_info=True)
+            raise ProcessingError(f"Failed to prepare data for profile generation: {str(e)}")
 
-        # Prepare constraints (simplified, adapt _prepare_constraints if complex)
-        # constraints = self._prepare_constraints(config, template_data_for_hist) # Needs template_data
 
-        # Call the appropriate generator method (now async)
+        # Call the appropriate generator method (now async) from ProjectLoadProfileManager
         if generation_type == "base_profile":
-            result = await generator.generate_base_profile_forecast( # await
-                 historical_data=historical_data_df, demand_scenarios=demand_scenarios_df,
-                 base_year=int(config['base_year']), start_fy=int(config['start_fy']), end_fy=int(config['end_fy']),
-                 frequency=config.get('frequency', 'hourly'), # constraints=constraints
-            )
+            # Validate specific fields for base_profile if not handled by Pydantic in router
+            if 'base_year' not in config or 'start_fy' not in config or 'end_fy' not in config:
+                raise ValidationError("Missing required fields (base_year, start_fy, end_fy) for base profile generation.")
+            result_from_manager = await generator.generate_base_profile_forecast(config_for_generation)
         elif generation_type == "stl_profile":
-            result = await generator.generate_stl_forecast( # await
-                 historical_data=historical_data_df, demand_scenarios=demand_scenarios_df,
-                 start_fy=int(config['start_fy']), end_fy=int(config['end_fy']),
-                 frequency=config.get('frequency', 'hourly'), stl_params=config.get('stl_params', {}), # constraints=constraints
-            )
+            if 'start_fy' not in config or 'end_fy' not in config:
+                 raise ValidationError("Missing required fields (start_fy, end_fy) for STL profile generation.")
+            result_from_manager = await generator.generate_stl_forecast(config_for_generation)
         else:
             raise ValidationError(f"Unknown generation type: {generation_type}")
 
-        if result.get('status') == 'success':
-            custom_name = config.get('custom_name', '').strip()
-            profile_id_to_save = None
-            if custom_name: # Generate ID if custom name provided
-                safe_name = "".join(c if c.isalnum() else '_' for c in custom_name) # Basic sanitize
-                profile_id_to_save = f"{safe_name[:30]}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        if result_from_manager.get('status') == 'success' and result_from_manager.get('data'):
+            profile_data_to_save = result_from_manager['data']
 
-            save_info = await generator.save_forecast(result['data'], profile_id=profile_id_to_save) # await
+            custom_name = config.get('custom_name', '').strip()
+            # profile_id_to_save = None # Let save_generated_profile handle ID generation if None
+            # if custom_name:
+            #     safe_name = "".join(c if c.isalnum() else '_' for c in custom_name)
+            #     profile_id_to_save = f"{safe_name[:30]}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            # Pass the original config (or config_for_generation which includes historical_data)
+            # to be stored as part of metadata. The `profile_data_to_save` should also include it.
+            if 'config_snapshot' not in profile_data_to_save: # Ensure config is part of what's saved
+                profile_data_to_save['config_snapshot'] = config
+
+            save_info = await generator.save_generated_profile(profile_data_to_save, profile_id=custom_name or None)
 
             # Clear relevant caches
             self._cache.pop(f"profiles:{project_name}", None)
@@ -403,26 +542,25 @@ class LoadProfileService:
 
     async def upload_template_file(self, project_name: str, file: UploadFile) -> Dict[str, Any]:
         """Handles upload and basic validation of a load curve template for a project."""
-        generator = await self._get_project_generator(project_name) # await
-        template_file_path = generator.inputs_path / "load_curve_template.xlsx" # Standard name
+        generator = await self._get_project_generator(project_name)
+        template_file_path = await generator.get_template_file_path()
 
         try:
-            content = await file.read() # Read from UploadFile (async)
+            content = await file.read()
 
-            # Async file write
             def _write_file_sync(path: Path, data: bytes):
                 with open(path, "wb") as buffer:
                     buffer.write(data)
             await asyncio.to_thread(_write_file_sync, template_file_path, content)
 
-            # Perform a basic validation by trying to load it (now async)
+            # Perform validation by trying to load and analyze it
+            # This implicitly validates structure and basic content.
             await generator.load_template_data()
 
-            # Clear relevant caches if template changes
-            self._cache.pop(f"template_analysis:{project_name}", None)
-            self._cache.pop(f"base_years:{project_name}", None)
+            self._cache.pop(f"template_info:{project_name}", None)
+            self._cache.pop(f"available_base_years:{project_name}", None)
 
-            file_info_data = await get_file_info(template_file_path) # get_file_info is async
+            file_info_data = await get_file_info(template_file_path)
             logger.info(f"Uploaded and validated template for project '{project_name}' to {template_file_path}")
             return {
                 "success": True, "message": "Template uploaded and validated successfully.",
@@ -430,14 +568,83 @@ class LoadProfileService:
             }
         except Exception as e:
             logger.exception(f"Error uploading or validating template for project '{project_name}': {e}")
-            # Attempt to remove partially saved or invalid file (async)
             exists = await asyncio.to_thread(template_file_path.exists)
             if exists:
                 await asyncio.to_thread(template_file_path.unlink, missing_ok=True)
             raise ProcessingError(f"Template upload/validation failed: {str(e)}")
 
+    async def get_template_info(self, project_name: str) -> Dict[str, Any]:
+        """Retrieves analysis/summary of the load curve template for a project."""
+        cache_key = f"template_info:{project_name}"
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data:
+            logger.debug(f"Using cached template info for project '{project_name}'")
+            return cached_data
 
-    # Methods like get_template_analysis, get_available_base_years, get_scenario_analysis
+        generator = await self._get_project_generator(project_name)
+        try:
+            # load_template_data in manager now returns the analysis result
+            template_analysis = await generator.load_template_data()
+
+            # Add file path info
+            template_path = await generator.get_template_file_path()
+            template_analysis['file_path'] = str(template_path)
+            template_analysis['file_exists'] = await asyncio.to_thread(template_path.exists)
+            if template_analysis['file_exists']:
+                 template_analysis['file_info'] = await get_file_info(template_path)
+
+            self._set_cache(cache_key, template_analysis)
+            return template_analysis
+        except ResourceNotFoundError:
+            # If template doesn't exist, return a specific structure
+            return {
+                "error": "Template file not found.",
+                "file_exists": False,
+                "file_path": str(await generator.get_template_file_path()),
+                "message": "Please upload 'load_curve_template.xlsx' to the project's input folder."
+            }
+        except Exception as e:
+            logger.exception(f"Error getting template info for project '{project_name}': {e}")
+            raise ProcessingError(f"Failed to get template information: {str(e)}")
+
+    async def get_available_base_years(self, project_name: str) -> List[int]:
+        """Retrieves available base years from the project's load curve template."""
+        cache_key = f"available_base_years:{project_name}"
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data:
+            logger.debug(f"Using cached available base years for project '{project_name}'")
+            return cached_data
+
+        generator = await self._get_project_generator(project_name)
+        try:
+            base_years = await generator.get_available_base_years()
+            self._set_cache(cache_key, base_years)
+            return base_years
+        except ResourceNotFoundError: # Raised by load_template_data if template missing
+            return [] # No base years if template is missing
+        except Exception as e:
+            logger.exception(f"Error getting available base years for project '{project_name}': {e}")
+            # Depending on strictness, could raise ProcessingError or return empty list
+            return []
+
+    async def list_saved_profiles(self, project_name: str) -> List[Dict[str, Any]]:
+        """Lists all saved load profiles with their metadata for a project."""
+        cache_key = f"profiles_list:{project_name}"
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data:
+            logger.debug(f"Using cached list of saved profiles for project '{project_name}'")
+            return cached_data
+
+        generator = await self._get_project_generator(project_name)
+        try:
+            profiles_metadata = await generator.get_saved_profiles_metadata()
+            self._set_cache(cache_key, profiles_metadata)
+            return profiles_metadata
+        except Exception as e:
+            logger.exception(f"Error listing saved profiles for project '{project_name}': {e}")
+            raise ProcessingError(f"Failed to list saved profiles: {str(e)}")
+
+    # Methods like get_scenario_analysis
     # would be adapted similarly, using the project-specific generator and async calls.
     # The analysis logic itself (_analyze_template_data, etc.) would remain largely the same
     # but ensure it works with data loaded by the (potentially refactored) generator.

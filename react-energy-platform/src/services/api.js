@@ -95,6 +95,30 @@ export default {
   getScenarioConfiguration,
   validateConfiguration,
 
+  // Load Profile endpoints
+  getLoadProfileMainData: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/main_data`),
+  getTemplateInfo: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/template_info`),
+  getAvailableBaseYears: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/available_base_years`),
+  getDemandScenarioInfo: (projectName, scenarioName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/demand_scenario/${encodeURIComponent(scenarioName)}`),
+  previewBaseProfiles: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/preview_base_profiles`, payload),
+  generateBaseProfile: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/generate_base_profile`, payload),
+  generateStlProfile: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/generate_stl_profile`, payload),
+  listSavedLoadProfiles: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles`),
+  getLoadProfileData: (projectName, profileId) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`),
+  // downloadLoadProfile: (projectName, profileId) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}/download`, { responseType: 'blob' }), // Special handling for blob
+  deleteLoadProfile: (projectName, profileId) => apiClient.delete(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`),
+  uploadLoadProfileTemplate: (projectName, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/upload_template`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  analyzeLoadProfile: (projectName, profileId, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}/analysis`, payload),
+  compareLoadProfiles: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/compare_profiles`, payload),
+
   // You can also export apiClient directly if needed for custom requests elsewhere
   // apiClientInstance: apiClient
 };
