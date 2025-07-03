@@ -49,12 +49,15 @@ from app.models.pypsa import (
     PyPSAJobRunPayload,
     PyPSAJobStatusResponse,
     PyPSANetworkListResponse,
-    PyPSANetworkInfoResponse, # For individual network info if needed by list_available_networks
-    PyPSADataExtractionRequest, # For POST based data extraction
-    PyPSADataResponse
+    # PyPSANetworkInfoResponse, # Used by PyPSANetworkListResponse
+    PyPSANetworkInfoDetailResponse, # For detailed info of one network
+    PyPSADataExtractionRequest,
+    PyPSADataResponse,
+    PyPSAComparisonRequest,
+    PyPSAComparisonResponse,
+    PyPSASystemStatusResponse
 )
 # --- Dependency for PypsaService ---
-# Assuming a dependency function is defined in app.dependencies
 from app.dependencies import get_pypsa_service as get_pypsa_service_dependency
 
 
@@ -154,10 +157,72 @@ async def extract_pypsa_data_api(
         raise HTTPException(status_code=500, detail=f"Data extraction failed: {str(e)}")
 
 
-# TODO: Implement endpoints for:
-# - /api/network_info/<path:network_rel_path> -> GET /{project_name}/scenario/{scenario_name}/network/{network_file_id}/info
-# - /api/compare_networks -> POST /{project_name}/compare_networks
-# - /api/system_status -> GET /pypsa_system_status (might be more general admin endpoint)
+@router.get("/{project_name}/scenario/{scenario_name}/network/{network_file_name}/info",
+            response_model=PyPSANetworkInfoDetailResponse, # Use the detailed response model
+            summary="Get Detailed Information for a Specific PyPSA Network File")
+async def get_network_info_api(
+    project_name: str = FastAPIPath(..., description="Project name"),
+    scenario_name: str = FastAPIPath(..., description="Scenario name containing the network file"),
+    network_file_name: str = FastAPIPath(..., description="The .nc network file name (e.g., 'results_2025.nc')"),
+    service: PypsaService = Depends(get_pypsa_service_dependency)
+):
+    try:
+        info = await service.get_network_info(project_name, scenario_name, network_file_name)
+        return info # Service method should return data compatible with PyPSANetworkInfoDetailResponse
+    except FileNotFoundError as e: # Raised by service if path is wrong or network not found
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e: # Raised by service if loading/processing fails
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error getting PyPSA network info for {project_name}/{scenario_name}/{network_file_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to get network info: {str(e)}")
 
-logger.info("PyPSA API router updated for FastAPI with Job Management and Network Listing.")
-print("PyPSA API router updated for FastAPI with Job Management and Network Listing.")
+@router.post("/{project_name}/compare_networks",
+             response_model=PyPSAComparisonResponse, # Use the new response model
+             summary="Compare Multiple PyPSA Networks")
+async def compare_pypsa_networks_api(
+    project_name: str = FastAPIPath(..., description="Project name under which networks reside"),
+    payload: PyPSAComparisonRequest, # Uses the new request model
+    service: PypsaService = Depends(get_pypsa_service_dependency)
+):
+    # The payload contains project_name, but we also have it as a path parameter.
+    # Ensure consistency or decide which one to use (path param is conventional for resource scoping).
+    # For now, assuming service will use the project_name from its own context or path.
+    # The PyPSAComparisonRequest model's project_name might be redundant if always using path param.
+    if payload.project_name != project_name:
+        raise HTTPException(status_code=400, detail="Project name in payload does not match path parameter.")
+
+    try:
+        results = await service.compare_networks_data(
+            project_name=project_name, # Use path parameter
+            network_specs= [spec.model_dump() for spec in payload.network_specs], # Convert Pydantic to dict list
+            comparison_func_name=payload.comparison_function_name,
+            params=payload.parameters
+        )
+        return PyPSAComparisonResponse(comparison_results=results, metadata={"comparison_type": payload.comparison_function_name})
+    except ValueError as e: # For issues like < 2 networks, invalid spec
+        raise HTTPException(status_code=400, detail=str(e))
+    except AttributeError as e: # For invalid comparison_func_name
+        raise HTTPException(status_code=400, detail=str(e))
+    except ProcessingError as e: # For issues during comparison logic in service
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error comparing PyPSA networks for project {project_name}")
+        raise HTTPException(status_code=500, detail=f"Network comparison failed: {str(e)}")
+
+@router.get("/system_status",
+            response_model=PyPSASystemStatusResponse, # Use the new response model
+            summary="Get PyPSA Service System Status (Cache, Jobs)")
+async def get_pypsa_system_status_api(
+    service: PypsaService = Depends(get_pypsa_service_dependency)
+):
+    try:
+        status = await service.get_pypsa_system_status()
+        return status
+    except Exception as e:
+        logger.exception("Error getting PyPSA system status")
+        raise HTTPException(status_code=500, detail=f"Failed to get PyPSA system status: {str(e)}")
+
+
+logger.info("PyPSA API router updated for FastAPI with Job Management, Network Listing, Info, Comparison, and System Status.")
+print("PyPSA API router updated for FastAPI with Job Management, Network Listing, Info, Comparison, and System Status.")

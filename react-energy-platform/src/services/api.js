@@ -2,32 +2,15 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  // The Vite proxy is configured for '/api', and FastAPI uses '/api/v1'.
-  // So, requests from React should go to '/api/v1/...'
-  // Example: apiClient.get('/core/health') will request 'http://localhost:3000/api/v1/core/health'
-  // Vite proxies '/api' part, so it becomes 'http://localhost:8000/api/v1/core/health' if FastAPI is on port 8000
-  // However, FastAPI main router is already prefixed with /api/v1.
-  // So, if FastAPI is at http://localhost:8000/api/v1, then baseURL for client should be this.
-  // Vite proxy: target 'http://localhost:8000'. React calls '/api/v1/...'
-  // Vite sends to 'http://localhost:8000/api/v1/...'
-  // This means the baseURL for axios should be simply '/', and all calls must include the full path from /api/v1
-  // OR, baseURL is '/api/v1' and calls are made to '/endpoint'.
-  // Let's stick to baseURL being the prefix for the API version.
-  baseURL: '/api/v1', // Vite handles proxying requests starting with /api
+  baseURL: '/api/v1',
   headers: {
     'Content-Type': 'application/json',
-    // Add other common headers, e.g., for authorization
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 10000,
 });
 
-// Interceptors for request/response (e.g., token injection, error handling)
 apiClient.interceptors.request.use(
   config => {
-    // Example: const token = localStorage.getItem('authToken');
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
     console.debug('Starting API Request', config.method?.toUpperCase(), config.url, config.data);
     return config;
   },
@@ -44,19 +27,15 @@ apiClient.interceptors.response.use(
   },
   error => {
     console.error('API Response Error', error.response?.status, error.config?.url, error.response?.data);
-    // Handle global errors (e.g., 401, 500) or specific error structures
-    // Example: if (error.response && error.response.status === 401) {
-    //   // Redirect to login or refresh token
-    // }
-    return Promise.reject(error); // It's important to reject the promise so calling code can handle it
+    return Promise.reject(error);
   }
 );
 
 // --- API Service Functions ---
 
 // Core endpoints
-const getHealth = () => apiClient.get('/health'); // FastAPI root health is /health, not /core/health as per main.py
-const getFastAPIRoot = () => apiClient.get('/'); // FastAPI root is /, not /core/ as per main.py
+const getHealth = () => apiClient.get('/health');
+const getFastAPIRoot = () => apiClient.get('/');
 const getSystemInfo = () => apiClient.get('/core/system_info');
 const getFeatureFlags = () => apiClient.get('/core/feature_flags');
 
@@ -65,7 +44,7 @@ const getProjectInputDataSummary = (projectName) => apiClient.get(`/demand_proje
 const getSectorData = (projectName, sectorName) => apiClient.get(`/demand_projection/${encodeURIComponent(projectName)}/sector_data/${encodeURIComponent(sectorName)}`);
 const getIndependentVariables = (projectName, sectorName) => apiClient.get(`/demand_projection/${encodeURIComponent(projectName)}/independent_variables/${encodeURIComponent(sectorName)}`);
 const getCorrelationData = (projectName, sectorName) => apiClient.get(`/demand_projection/${encodeURIComponent(projectName)}/correlation_data/${encodeURIComponent(sectorName)}`);
-const getChartData = (projectName, sectorName) => apiClient.get(`/demand_projection/${encodeURIComponent(projectName)}/chart_data/${encodeURIComponent(sectorName)}`); // Assuming this endpoint exists in FastAPI as per Flask
+const getChartData = (projectName, sectorName) => apiClient.get(`/demand_projection/${encodeURIComponent(projectName)}/chart_data/${encodeURIComponent(sectorName)}`);
 const runForecast = (projectName, payload) => apiClient.post(`/demand_projection/${encodeURIComponent(projectName)}/run_forecast`, payload);
 const getForecastStatus = (jobId) => apiClient.get(`/demand_projection/forecast_status/${jobId}`);
 const cancelForecast = (jobId) => apiClient.post(`/demand_projection/cancel_forecast/${jobId}`);
@@ -74,6 +53,115 @@ const validateScenarioName = (projectName, scenarioName) => apiClient.post(`/dem
 const getScenarioConfiguration = (projectName, scenarioName) => apiClient.get(`/demand_projection/${encodeURIComponent(projectName)}/configuration/${encodeURIComponent(scenarioName)}`);
 const validateConfiguration = (projectName, payload) => apiClient.post(`/demand_projection/${encodeURIComponent(projectName)}/validate_configuration`, payload);
 
+// Load Profile endpoints
+const getLoadProfileMainData = (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/main_data`);
+const getTemplateInfo = (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/template_info`);
+const getAvailableBaseYears = (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/available_base_years`);
+const getDemandScenarioInfo = (projectName, scenarioName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/demand_scenario/${encodeURIComponent(scenarioName)}`);
+const previewBaseProfiles = (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/preview_base_profiles`, payload);
+const generateBaseProfile = (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/generate_base_profile`, payload);
+const generateStlProfile = (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/generate_stl_profile`, payload);
+const listSavedLoadProfiles = (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles`);
+const getLoadProfileData = (projectName, profileId) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`);
+const deleteLoadProfile = (projectName, profileId) => apiClient.delete(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`);
+const uploadLoadProfileTemplate = (projectName, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/upload_template`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+// analyzeLoadProfile and compareLoadProfiles might be better suited for a dedicated LoadProfileAnalysis service/section
+// const analyzeLoadProfile = (projectName, profileId, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}/analysis`, payload);
+// const compareLoadProfiles = (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/compare_profiles`, payload);
+
+// PyPSA Endpoints
+const runPyPSAJob = (payload) => apiClient.post('/pypsa/run_simulation', payload);
+const getPyPSAJobStatus = (jobId) => apiClient.get(`/pypsa/job_status/${jobId}`);
+const listPyPSANetworks = (projectName, scenarioName = null) => {
+  let url = `/pypsa/${encodeURIComponent(projectName)}/networks`;
+  if (scenarioName) {
+    url += `?scenario_name=${encodeURIComponent(scenarioName)}`;
+  }
+  return apiClient.get(url);
+};
+const getPyPSANetworkInfo = (projectName, scenarioName, networkFileName) => apiClient.get(`/pypsa/${encodeURIComponent(projectName)}/scenario/${encodeURIComponent(scenarioName)}/network/${encodeURIComponent(networkFileName)}/info`);
+const extractPyPSAData = (projectName, scenarioName, networkFileName, payload) => apiClient.post(`/pypsa/${encodeURIComponent(projectName)}/scenario/${encodeURIComponent(scenarioName)}/network/${encodeURIComponent(networkFileName)}/extract_data`, payload);
+const comparePyPSANetworks = (projectName, payload) => apiClient.post(`/pypsa/${encodeURIComponent(projectName)}/compare_networks`, payload);
+const getPyPSASystemStatus = () => apiClient.get('/pypsa/system_status');
+
+// Admin Endpoints
+const getAdminFeaturesConfig = (projectName = null) => {
+  let url = '/admin/features';
+  if (projectName) { url += `?project_name=${encodeURIComponent(projectName)}`; }
+  return apiClient.get(url);
+};
+const updateAdminFeature = (featureId, payload, projectName = null) => {
+  let url = `/admin/features/${encodeURIComponent(featureId)}`;
+  if (projectName) { url += `?project_name=${encodeURIComponent(projectName)}`;}
+  return apiClient.put(url, payload);
+};
+const bulkUpdateAdminFeatures = (payload) => apiClient.post('/admin/features/bulk_update', payload);
+const triggerSystemCleanup = (payload) => apiClient.post('/admin/system/cleanup', payload);
+const getAdminSystemInfo = () => apiClient.get('/admin/system/info');
+const getAdminSystemHealth = () => apiClient.get('/admin/system/health');
+
+// Color Management Endpoints
+const getAllColors = () => apiClient.get('/colors/all');
+const getCategoryColors = (category) => apiClient.get(`/colors/category/${encodeURIComponent(category)}`);
+const getSectorColors = (sectors = null) => apiClient.get('/colors/sectors', { params: sectors ? { sectors } : {} });
+const getModelColors = (models = null) => apiClient.get('/colors/models', { params: models ? { models } : {} });
+const getCarrierColors = (carriers = null) => apiClient.get('/colors/carriers', { params: carriers ? { carriers } : {} });
+const getChartColors = (count) => apiClient.get(`/colors/chart/${count}`);
+const setColor = (payload) => apiClient.post('/colors/set', payload);
+const setMultipleColors = (payload) => apiClient.post('/colors/set_multiple', payload);
+const resetColors = (payload = null) => apiClient.post('/colors/reset', payload);
+const exportColorsJS = () => apiClient.get('/colors/export/js');
+const getColorPalette = (payload) => apiClient.post('/colors/palette', payload);
+const getGradientColors = (gradientName) => apiClient.get(`/colors/gradient/${encodeURIComponent(gradientName)}`);
+const getThemeColors = (themeName = 'light') => apiClient.get(`/colors/theme/${encodeURIComponent(themeName)}`);
+const validateColorFormat = (payload) => apiClient.post('/colors/validate', payload);
+const getColorStats = () => apiClient.get('/colors/stats');
+
+// Demand Visualization Endpoints
+const listDemandScenarios = (projectName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/scenarios`);
+const getDemandScenarioData = (projectName, scenarioName, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/scenario/${encodeURIComponent(scenarioName)}`, { params: filters });
+const compareDemandScenarios = (projectName, scenario1Name, scenario2Name, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/comparison`, { params: { scenario1: scenario1Name, scenario2: scenario2Name, ...filters } });
+const getModelSelectionConfig = (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/model_selection/${encodeURIComponent(scenarioName)}`);
+const saveModelSelectionConfig = (projectName, scenarioName, modelSelection) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/model_selection/${encodeURIComponent(scenarioName)}`, { model_selection: modelSelection });
+const getTdLossesConfig = (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/td_losses/${encodeURIComponent(scenarioName)}`);
+const saveTdLossesConfig = (projectName, scenarioName, tdLosses) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/td_losses/${encodeURIComponent(scenarioName)}`, { td_losses: tdLosses });
+const generateConsolidatedResults = (projectName, scenarioName, payload) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/consolidated_results/${encodeURIComponent(scenarioName)}`, payload);
+const getAnalysisSummary = (projectName, scenarioName, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/analysis_summary/${encodeURIComponent(scenarioName)}`, { params: filters });
+const exportDemandData = async (projectName, scenarioName, dataType = 'consolidated', filters = {}) => {
+  const response = await apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/export/${encodeURIComponent(scenarioName)}`, {
+    params: { data_type: dataType, ...filters },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = `${scenarioName}_${dataType}_export.csv`;
+  if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+      if (filenameMatch && filenameMatch.length === 2)
+          filename = filenameMatch[1];
+  }
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+  return { success: true, filename: filename };
+};
+const validateDemandScenario = (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/validate_configurations/${encodeURIComponent(scenarioName)}`);
+
+// Load Profile Analysis Endpoints
+const listAvailableProfilesForAnalysis = (projectName) => apiClient.get(`/loadprofile_analysis/${encodeURIComponent(projectName)}/available_profiles`);
+const getStatisticalSummary = (projectName, profileId, unit = 'kW') => apiClient.get(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/statistical_summary`, { params: { unit } });
+const performLoadProfileAnalysis = (projectName, profileId, analysisType, params = null) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/analyze/${encodeURIComponent(analysisType)}`, params);
+
 
 export default {
   getHealth,
@@ -81,7 +169,6 @@ export default {
   getSystemInfo,
   getFeatureFlags,
 
-  // Demand Projection
   getProjectInputDataSummary,
   getSectorData,
   getIndependentVariables,
@@ -95,78 +182,64 @@ export default {
   getScenarioConfiguration,
   validateConfiguration,
 
-  // Load Profile endpoints
-  getLoadProfileMainData: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/main_data`),
-  getTemplateInfo: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/template_info`),
-  getAvailableBaseYears: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/available_base_years`),
-  getDemandScenarioInfo: (projectName, scenarioName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/demand_scenario/${encodeURIComponent(scenarioName)}`),
-  previewBaseProfiles: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/preview_base_profiles`, payload),
-  generateBaseProfile: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/generate_base_profile`, payload),
-  generateStlProfile: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/generate_stl_profile`, payload),
-  listSavedLoadProfiles: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles`),
-  getLoadProfileData: (projectName, profileId) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`),
-  // downloadLoadProfile: (projectName, profileId) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}/download`, { responseType: 'blob' }), // Special handling for blob
-  deleteLoadProfile: (projectName, profileId) => apiClient.delete(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`),
-  uploadLoadProfileTemplate: (projectName, file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/upload_template`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
-  analyzeLoadProfile: (projectName, profileId, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}/analysis`, payload),
-  compareLoadProfiles: (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/compare_profiles`, payload),
+  getLoadProfileMainData,
+  getTemplateInfo,
+  getAvailableBaseYears,
+  getDemandScenarioInfo,
+  previewBaseProfiles,
+  generateBaseProfile,
+  generateStlProfile,
+  listSavedLoadProfiles,
+  getLoadProfileData,
+  deleteLoadProfile,
+  uploadLoadProfileTemplate,
+  // analyzeLoadProfile, // Moved to Load Profile Analysis section
+  // compareLoadProfiles, // Moved to Load Profile Analysis section (or keep if distinct from DV compare)
 
-  // You can also export apiClient directly if needed for custom requests elsewhere
-  // apiClientInstance: apiClient
+  runPyPSAJob,
+  getPyPSAJobStatus,
+  listPyPSANetworks,
+  getPyPSANetworkInfo,
+  extractPyPSAData,
+  comparePyPSANetworks,
+  getPyPSASystemStatus,
 
-  // PyPSA Endpoints
-  runPyPSAJob: (payload) => apiClient.post('/pypsa/run_simulation', payload),
-  getPyPSAJobStatus: (jobId) => apiClient.get(`/pypsa/job_status/${jobId}`),
-  listPyPSANetworks: (projectName, scenarioName = null) => {
-    let url = `/pypsa/${encodeURIComponent(projectName)}/networks`;
-    if (scenarioName) {
-      url += `?scenario_name=${encodeURIComponent(scenarioName)}`;
-    }
-    return apiClient.get(url);
-  },
-  extractPyPSAData: (projectName, scenarioName, networkFileId, payload) => apiClient.post(`/pypsa/${encodeURIComponent(projectName)}/scenario/${encodeURIComponent(scenario_name)}/network/${encodeURIComponent(networkFileId)}/extract_data`, payload),
-  // Add more PyPSA specific API calls here as service/API develops (get_network_info, compare_networks etc.)
+  getAdminFeaturesConfig,
+  updateAdminFeature,
+  bulkUpdateAdminFeatures,
+  triggerSystemCleanup,
+  getAdminSystemInfo,
+  getAdminSystemHealth,
 
-  // Demand Visualization Endpoints
-  listDemandScenarios: (projectName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/scenarios`),
-  getDemandScenarioData: (projectName, scenarioName, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/scenario/${encodeURIComponent(scenarioName)}`, { params: filters }),
-  compareDemandScenarios: (projectName, scenario1Name, scenario2Name, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/comparison`, { params: { scenario1: scenario1Name, scenario2: scenario2Name, ...filters } }),
-  getModelSelectionConfig: (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/model_selection/${encodeURIComponent(scenarioName)}`),
-  saveModelSelectionConfig: (projectName, scenarioName, modelSelection) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/model_selection/${encodeURIComponent(scenarioName)}`, { model_selection: modelSelection }), // FastAPI endpoint expects {"model_selection": {...}}
-  getTdLossesConfig: (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/td_losses/${encodeURIComponent(scenarioName)}`),
-  saveTdLossesConfig: (projectName, scenarioName, tdLosses) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/td_losses/${encodeURIComponent(scenarioName)}`, { td_losses: tdLosses }), // FastAPI endpoint expects {"td_losses": [...]}
-  generateConsolidatedResults: (projectName, scenarioName, payload) => apiClient.post(`/demand_visualization/${encodeURIComponent(projectName)}/consolidated_results/${encodeURIComponent(scenarioName)}`, payload),
-  getAnalysisSummary: (projectName, scenarioName, filters = {}) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/analysis_summary/${encodeURIComponent(scenarioName)}`, { params: filters }), // Changed from /analysis to /analysis_summary
-  exportDemandData: async (projectName, scenarioName, dataType = 'consolidated', filters = {}) => {
-    const response = await apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/export/${encodeURIComponent(scenarioName)}`, {
-      params: { data_type: dataType, ...filters },
-      responseType: 'blob', // Important for file downloads
-    });
-    // Trigger file download
-    const-url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    const contentDisposition = response.headers['content-disposition'];
-    let filename = `${scenarioName}_${dataType}_export.csv`;
-    if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
-        if (filenameMatch && filenameMatch.length === 2)
-            filename = filenameMatch[1];
-    }
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-    return { success: true, filename: filename };
-  },
-  validateDemandScenario: (projectName, scenarioName) => apiClient.get(`/demand_visualization/${encodeURIComponent(projectName)}/validate_configurations/${encodeURIComponent(scenarioName)}`), // Changed from /validate to /validate_configurations
+  getAllColors,
+  getCategoryColors,
+  getSectorColors,
+  getModelColors,
+  getCarrierColors,
+  getChartColors,
+  setColor,
+  setMultipleColors,
+  resetColors,
+  exportColorsJS,
+  getColorPalette,
+  getGradientColors,
+  getThemeColors,
+  validateColorFormat,
+  getColorStats,
+
+  listDemandScenarios,
+  getDemandScenarioData,
+  compareDemandScenarios,
+  getModelSelectionConfig,
+  saveModelSelectionConfig,
+  getTdLossesConfig,
+  saveTdLossesConfig,
+  generateConsolidatedResults,
+  getAnalysisSummary,
+  exportDemandData,
+  validateDemandScenario,
+
+  listAvailableProfilesForAnalysis, // Added
+  getStatisticalSummary, // Added
+  performLoadProfileAnalysis, // Added
 };
