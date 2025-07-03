@@ -25,7 +25,10 @@ from app.utils.demand_utils import (
 # from app.utils.response_utils import ... # Response construction will be handled by routers
 
 # This model import needs to be updated if its location or structure changes
-from app.models.forecasting import Main_forecasting_function # Assuming this is the core ML model function
+# from app.models.forecasting import Main_forecasting_function # Assuming this is the core ML model function
+# Corrected import path:
+from models.forecasting import Main_forecasting_function
+
 
 # FastAPI specific imports
 # from fastapi import BackgroundTasks # For running forecasts in the background
@@ -216,13 +219,18 @@ class DemandProjectionService:
 
         # Adapt validate_input_file and input_demand_data to be async or run in threadpool
         # These functions use pandas which is synchronous, so we run them in a thread pool.
-        validation_result = await asyncio.to_thread(validate_input_file, str(input_file_path))
-        if not validation_result['valid']:
-            raise ValueError(f"Input file validation failed: {'; '.join(validation_result['errors'])}")
-        for warning in validation_result.get('warnings', []):
-            logger.warning(f"Input file warning for {project_name}: {warning}")
+        try:
+            validation_result = await asyncio.to_thread(validate_input_file, str(input_file_path))
+            if not validation_result['valid']:
+                raise ValueError(f"Input file validation failed for {input_file_path}: {'; '.join(validation_result['errors'])}")
+            for warning in validation_result.get('warnings', []):
+                logger.warning(f"Input file warning for project '{project_name}', file {input_file_path}: {warning}")
 
-        data_tuple = await asyncio.to_thread(input_demand_data, str(input_file_path))
+            data_tuple = await asyncio.to_thread(input_demand_data, str(input_file_path))
+        except Exception as e:
+            logger.error(f"Failed to load or validate input data for project '{project_name}' from {input_file_path}: {e}", exc_info=True)
+            raise ValueError(f"Error processing input file for project '{project_name}': {str(e)}")
+
 
         self._project_input_data_cache[cache_key] = (data_tuple, time.time())
         logger.info(f"Loaded input data for project '{project_name}'.")
@@ -231,47 +239,342 @@ class DemandProjectionService:
     async def get_input_data_summary(self, project_name: str) -> Dict[str, Any]:
         """Gets a summary of the input data for a project."""
         try:
-            sectors, missing_sectors, param_dict, _, aggregated_ele = await self._load_input_data(project_name)
             input_file_path = self._get_project_input_file_path(project_name)
+            if not await asyncio.to_thread(input_file_path.exists):
+                return {
+                    'error': f"Input file not found: {input_file_path.name}",
+                    'project_name': project_name,
+                    'data_available': False,
+                    'message': f"Input file '{input_file_path.name}' does not exist for project '{project_name}'. Please upload it."
+                }
+
+            sectors, missing_sectors, param_dict, sector_data_map, aggregated_ele = await self._load_input_data(project_name)
+
+            file_stat = await asyncio.to_thread(input_file_path.stat)
+            data_quality = self._assess_data_quality(sectors, missing_sectors, sector_data_map)
+
             return {
                 'project_name': project_name,
+                'data_available': True,
                 'sectors_available': sectors,
-                'sectors_missing_in_data': missing_sectors,
+                'sectors_missing_in_data': missing_sectors, # Sectors defined in file but sheets missing
                 'parameters_from_file': param_dict,
                 'aggregated_data_summary': {
                     'num_rows': len(aggregated_ele),
-                    'num_columns': len(aggregated_ele.columns)
-                } if not aggregated_ele.empty else "Not available",
-                # Get file stat info asynchronously
-                'input_file_last_modified': datetime.fromtimestamp(
-                    (await asyncio.to_thread(input_file_path.stat)).st_mtime
-                ).isoformat()
+                    'num_columns': len(aggregated_ele.columns),
+                    'years': aggregated_ele['Year'].tolist() if 'Year' in aggregated_ele.columns and not aggregated_ele.empty else [],
+                } if not aggregated_ele.empty else {"message": "Aggregated data not available or empty."},
+                'input_file_metadata': {
+                    'name': input_file_path.name,
+                    'size_kb': round(file_stat.st_size / 1024, 2),
+                    'last_modified': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                },
+                'data_quality_assessment': data_quality,
+                 # For compatibility with Flask blueprint's expectation for _render_main_page context
+                'sectors': sectors, # Duplicate of sectors_available for now
+                'parameters': param_dict, # Duplicate of parameters_from_file
             }
+        except FileNotFoundError:
+             return {'error': f"Input file not found for project '{project_name}'.", 'project_name': project_name, 'data_available': False}
+        except ValueError as ve: # Catch validation errors from _load_input_data
+            return {'error': str(ve), 'project_name': project_name, 'data_available': False}
         except Exception as e:
             logger.exception(f"Error getting input data summary for project '{project_name}': {e}")
-            return {'error': str(e), 'project_name': project_name, 'data_available': False}
+            return {'error': f"An unexpected error occurred: {str(e)}", 'project_name': project_name, 'data_available': False}
+
+    def _assess_data_quality(self, sectors_available: List[str], sectors_missing: List[str], sector_data_map: Dict[str, Any]) -> Dict[str, Any]:
+        """Helper to assess overall data quality."""
+        total_defined_sectors = len(sectors_available) + len(sectors_missing)
+        if total_defined_sectors == 0:
+            return {'quality_score': 0, 'rating': 'No Data', 'issues': ['No sectors defined in input file.']}
+
+        available_actual_data_count = len(sectors_available) # Sectors with sheets
+
+        completeness_score = (available_actual_data_count / total_defined_sectors) * 100 if total_defined_sectors > 0 else 0
+
+        rating = "Poor"
+        if completeness_score >= 95: rating = "Excellent"
+        elif completeness_score >= 80: rating = "Good"
+        elif completeness_score >= 60: rating = "Fair"
+
+        issues = []
+        if sectors_missing:
+            issues.append(f"{len(sectors_missing)} sector sheets are missing: {', '.join(sectors_missing)}.")
+
+        for sec_name in sectors_available:
+            df = sector_data_map.get(sec_name)
+            if df is None or df.empty:
+                issues.append(f"Sector '{sec_name}' sheet is empty or unreadable.")
+                continue
+            if 'Electricity' not in df.columns:
+                 issues.append(f"Sector '{sec_name}' is missing 'Electricity' column.")
+            if 'Year' not in df.columns:
+                 issues.append(f"Sector '{sec_name}' is missing 'Year' column.")
+            # Could add more checks: NaN values, data types, year continuity etc.
+
+        return {
+            'quality_score': round(completeness_score, 2),
+            'rating': rating,
+            'total_defined_sectors': total_defined_sectors,
+            'sectors_with_data': available_actual_data_count,
+            'issues': issues if issues else ["Basic checks passed. Further validation might be needed."]
+        }
+
 
     async def get_sector_data(self, project_name: str, sector_name: str) -> Dict[str, Any]:
         """Gets detailed data for a specific sector within a project."""
         try:
-            _, _, _, sector_data_map, _ = await self._load_input_data(project_name)
+            _, _, _, sector_data_map, _ = await self._load_input_data(project_name) # sectors, missing_sectors, param_dict, sector_data_map, aggregated_ele
             if sector_name not in sector_data_map:
-                raise ValueError(f"Sector '{sector_name}' not found in project '{project_name}'.")
+                raise ValueError(f"Sector '{sector_name}' not found or has no data in project '{project_name}'.")
+
             df = sector_data_map[sector_name]
+            if df.empty:
+                 return {
+                    'project_name': project_name,
+                    'sector_name': sector_name,
+                    'message': 'Sector data is empty.',
+                    'columns': [],
+                    'data_records': [],
+                    'data_summary': {}
+                 }
+
+            # Convert all data to JSON serializable types (e.g. int, float, str, handle NaNs)
+            df_serializable = df.copy()
+            for col in df_serializable.columns:
+                if pd.api.types.is_numeric_dtype(df_serializable[col]):
+                    df_serializable[col] = df_serializable[col].apply(lambda x: None if pd.isna(x) else (int(x) if x == int(x) else float(x)))
+                else:
+                    df_serializable[col] = df_serializable[col].apply(lambda x: None if pd.isna(x) else str(x))
+
+
             return {
                 'project_name': project_name,
                 'sector_name': sector_name,
-                'columns': df.columns.tolist(),
-                'data_records': df.to_dict('records'), # Consider pagination for large data
+                'columns': df_serializable.columns.tolist(),
+                'data_records': df_serializable.to_dict('records'),
                 'data_summary': {
-                    'num_rows': len(df),
-                    'year_range': (int(df['Year'].min()), int(df['Year'].max())) if 'Year' in df.columns and not df.empty else None,
-                    'electricity_mean': float(df['Electricity'].mean()) if 'Electricity' in df.columns and not df.empty else None
+                    'num_rows': len(df_serializable),
+                    'year_range': (int(df['Year'].min()), int(df['Year'].max())) if 'Year' in df.columns and not df.empty and df['Year'].notna().all() else "N/A",
+                    'electricity_mean': float(df['Electricity'].mean()) if 'Electricity' in df.columns and not df.empty and df['Electricity'].notna().all() else "N/A"
                 }
             }
+        except FileNotFoundError:
+             raise ValueError(f"Input file not found for project '{project_name}'. Cannot get sector data.") # More specific error
+        except ValueError as ve: # Catch specific errors like sector not found
+            logger.warning(f"Value error getting sector data for '{sector_name}' in project '{project_name}': {ve}")
+            raise
         except Exception as e:
-            logger.exception(f"Error getting sector data for '{sector_name}' in project '{project_name}': {e}")
-            raise # Re-raise to be caught by error handling middleware
+            logger.exception(f"Unexpected error getting sector data for '{sector_name}' in project '{project_name}': {e}")
+            # Raise a generic error or a custom app exception
+            raise Exception(f"An unexpected error occurred while fetching data for sector '{sector_name}'.")
+
+
+    async def get_independent_variables(self, project_name: str, sector_name: str) -> Dict[str, Any]:
+        """
+        Determines suitable independent variables for a given sector's electricity consumption data.
+        Ported and adapted from Flask blueprint's expected service functionality.
+        """
+        try:
+            _, _, _, sector_data_map, _ = await self._load_input_data(project_name)
+            if sector_name not in sector_data_map:
+                raise ValueError(f"Sector '{sector_name}' not found in project '{project_name}'.")
+
+            df = sector_data_map[sector_name]
+            if df.empty or 'Electricity' not in df.columns:
+                return {
+                    "sector_name": sector_name,
+                    "suitable_variables": [],
+                    "all_variables": [],
+                    "analysis_details": "Dataframe is empty or 'Electricity' column is missing."
+                }
+
+            all_variables = [col for col in df.columns if col not in ['Year', 'Electricity']]
+            suitable_variables = []
+            analysis_details = {}
+
+            for var in all_variables:
+                col_data = df[var]
+                details = {}
+                if col_data.isnull().all():
+                    details['status'] = 'unsuitable'
+                    details['reason'] = 'All values are null.'
+                elif not pd.api.types.is_numeric_dtype(col_data):
+                    details['status'] = 'unsuitable'
+                    details['reason'] = f'Non-numeric data type ({col_data.dtype}).'
+                else:
+                    # Attempt conversion just in case some numerics are objects
+                    try:
+                        numeric_col_data = pd.to_numeric(col_data, errors='coerce')
+                        if numeric_col_data.isnull().all():
+                             details['status'] = 'unsuitable'
+                             details['reason'] = 'All values are null after numeric conversion.'
+                        elif numeric_col_data.nunique() <= 1: # Also check for constant values
+                            details['status'] = 'unsuitable'
+                            details['reason'] = 'Variable has no variance (constant or mostly null).'
+                        elif numeric_col_data.isnull().sum() > 0.3 * len(numeric_col_data): # Example: >30% missing
+                            details['status'] = 'check_caution'
+                            details['reason'] = f'{numeric_col_data.isnull().sum()} missing values ({round(numeric_col_data.isnull().mean() * 100, 1)}%).'
+                            suitable_variables.append(var) # Still add, but with caution
+                        else:
+                            details['status'] = 'suitable'
+                            details['reason'] = 'Numeric with sufficient data.'
+                            suitable_variables.append(var)
+                    except Exception as e_conv:
+                        details['status'] = 'unsuitable'
+                        details['reason'] = f'Error during numeric conversion: {str(e_conv)}'
+                analysis_details[var] = details
+
+            return {
+                "project_name": project_name,
+                "sector_name": sector_name,
+                "suitable_variables": suitable_variables,
+                "all_variables": all_variables,
+                "analysis_details": analysis_details,
+                "message": f"Found {len(suitable_variables)} suitable variables out of {len(all_variables)} for sector '{sector_name}'."
+            }
+
+        except FileNotFoundError:
+             raise ValueError(f"Input file not found for project '{project_name}'.")
+        except ValueError as ve:
+            logger.warning(f"Value error getting independent variables for '{sector_name}' in project '{project_name}': {ve}")
+            raise
+        except Exception as e:
+            logger.exception(f"Error getting independent variables for '{sector_name}' in project '{project_name}': {e}")
+            raise Exception(f"An unexpected error occurred while analyzing variables for sector '{sector_name}'.")
+
+
+    async def get_correlation_data(self, project_name: str, sector_name: str) -> Dict[str, Any]:
+        """
+        Calculates correlation of variables with 'Electricity' for a sector.
+        Ported and adapted from Flask blueprint's expected service functionality.
+        """
+        try:
+            _, _, _, sector_data_map, _ = await self._load_input_data(project_name)
+            if sector_name not in sector_data_map:
+                raise ValueError(f"Sector '{sector_name}' not found in project '{project_name}'.")
+
+            df = sector_data_map[sector_name].copy() # Use a copy for modifications
+
+            if df.empty or 'Electricity' not in df.columns:
+                 return {
+                    "project_name": project_name,
+                    "sector_name": sector_name,
+                    "error": "Dataframe is empty or 'Electricity' column is missing."
+                }
+
+            # Ensure 'Electricity' is numeric and handle NaNs
+            df['Electricity'] = pd.to_numeric(df['Electricity'], errors='coerce')
+            df.dropna(subset=['Electricity'], inplace=True) # Remove rows where electricity is NaN for correlation
+
+            numeric_cols_for_corr = ['Electricity']
+            potential_vars = [col for col in df.columns if col not in ['Year', 'Electricity']]
+
+            for var in potential_vars:
+                if pd.api.types.is_numeric_dtype(df[var]):
+                    df[var] = pd.to_numeric(df[var], errors='coerce') # Ensure it's float/int
+                    numeric_cols_for_corr.append(var)
+                # else: logger.debug(f"Skipping non-numeric column {var} for correlation in sector {sector_name}")
+
+            if len(numeric_cols_for_corr) <= 1 : # Only 'Electricity' or no numeric vars
+                return {
+                    "project_name": project_name,
+                    "sector_name": sector_name,
+                    "message": "Not enough numeric variables for correlation analysis.",
+                    "correlation_matrix": {},
+                    "electricity_correlations": {}
+                }
+
+            correlation_matrix = df[numeric_cols_for_corr].corr()
+            # Convert NaN correlations to None for JSON serialization
+            correlation_matrix_serializable = correlation_matrix.where(pd.notnull(correlation_matrix), None)
+
+            electricity_correlations = correlation_matrix_serializable['Electricity'].drop('Electricity', errors='ignore').to_dict()
+
+            return {
+                "project_name": project_name,
+                "sector_name": sector_name,
+                "correlation_matrix": correlation_matrix_serializable.to_dict(),
+                "electricity_correlations": electricity_correlations,
+                "variables_included": numeric_cols_for_corr
+            }
+
+        except FileNotFoundError:
+             raise ValueError(f"Input file not found for project '{project_name}'.")
+        except ValueError as ve:
+            logger.warning(f"Value error getting correlation data for '{sector_name}' in project '{project_name}': {ve}")
+            raise
+        except Exception as e:
+            logger.exception(f"Error calculating correlation for '{sector_name}' in project '{project_name}': {e}")
+            raise Exception(f"An unexpected error occurred during correlation analysis for sector '{sector_name}'.")
+
+    async def get_chart_data(self, project_name: str, sector_name: str) -> Dict[str, Any]:
+        """
+        Prepares data formatted for chart display (e.g., historical trends).
+        If sector_name is 'aggregated', it provides aggregated data.
+        """
+        try:
+            _, _, _, sector_data_map, aggregated_ele_df = await self._load_input_data(project_name)
+
+            if sector_name.lower() == 'aggregated':
+                if aggregated_ele_df.empty:
+                    return {"type": "aggregated", "error": "Aggregated data is not available or empty."}
+
+                df_agg_serializable = aggregated_ele_df.copy()
+                for col in df_agg_serializable.columns: # Ensure JSON serializable
+                     df_agg_serializable[col] = df_agg_serializable[col].apply(lambda x: None if pd.isna(x) else (int(x) if x == int(x) else (float(x) if isinstance(x, (float, int)) else str(x) )))
+
+                datasets = []
+                for col in df_agg_serializable.columns:
+                    if col.lower() != 'year':
+                        datasets.append({
+                            "label": col,
+                            "data": df_agg_serializable[col].tolist()
+                        })
+                return {
+                    "project_name": project_name,
+                    "type": "aggregated",
+                    "sector_name": "Aggregated",
+                    "years": df_agg_serializable['Year'].tolist() if 'Year' in df_agg_serializable.columns else [],
+                    "datasets": datasets,
+                    "total_consumption": df_agg_serializable.sum(axis=1, numeric_only=True).tolist() if not df_agg_serializable.empty else [] # Example, needs refinement
+                }
+
+            if sector_name not in sector_data_map:
+                raise ValueError(f"Sector '{sector_name}' not found in project '{project_name}'.")
+
+            df_sector = sector_data_map[sector_name]
+            if df_sector.empty:
+                return {"type": "sector", "sector_name": sector_name, "error": "Sector data is empty."}
+
+            df_sec_serializable = df_sector.copy()
+            for col in df_sec_serializable.columns: # Ensure JSON serializable
+                 df_sec_serializable[col] = df_sec_serializable[col].apply(lambda x: None if pd.isna(x) else (int(x) if x == int(x) else (float(x) if isinstance(x, (float, int)) else str(x) )))
+
+
+            chart_datasets = []
+            if 'Electricity' in df_sec_serializable.columns:
+                chart_datasets.append({
+                    "label": "Electricity",
+                    "data": df_sec_serializable['Electricity'].tolist()
+                })
+            # Could add other variables to chart_datasets if needed
+
+            return {
+                "project_name": project_name,
+                "type": "sector",
+                "sector_name": sector_name,
+                "years": df_sec_serializable['Year'].tolist() if 'Year' in df_sec_serializable.columns else [],
+                "datasets": chart_datasets
+            }
+        except FileNotFoundError:
+             raise ValueError(f"Input file not found for project '{project_name}'.")
+        except ValueError as ve:
+            logger.warning(f"Value error getting chart data for '{sector_name}' in project '{project_name}': {ve}")
+            raise
+        except Exception as e:
+            logger.exception(f"Error preparing chart data for '{sector_name}' in project '{project_name}': {e}")
+            raise Exception(f"An unexpected error occurred while preparing chart data for sector '{sector_name}'.")
 
 
     async def validate_forecast_config(self, project_name: str, config: ForecastJobConfig) -> List[str]:
@@ -290,9 +593,10 @@ class DemandProjectionService:
 
         try:
             _, _, param_dict, sector_data_map, _ = await self._load_input_data(project_name)
-            # data_end_year = param_dict.get('End_Year', VALIDATION_RULES['MAX_YEAR'] -1) # Default from data
-            # if config.target_year <= data_end_year:
-            #     errors.append(f"Target year ({config.target_year}) should be after data end year ({data_end_year}).")
+            data_end_year = param_dict.get('End_Year')
+            if data_end_year and isinstance(data_end_year, (int, float)) and config.target_year <= data_end_year :
+                 errors.append(f"Target year ({config.target_year}) should be after data end year ({int(data_end_year)}).")
+
 
             for sec_name, sec_cfg in config.sector_configs.items():
                 if sec_name not in sector_data_map:
@@ -302,9 +606,41 @@ class DemandProjectionService:
                 if not models: errors.append(f"No models specified for sector '{sec_name}'.")
                 for model in models:
                     if model not in FORECAST_MODELS: errors.append(f"Invalid model '{model}' for sector '{sec_name}'.")
-                # Add more model-specific validation (MLR vars, WAM window size) here if needed
+
+                # Validate MLR independent variables
+                if 'MLR' in models:
+                    mlr_vars = sec_cfg.get('independentVars', [])
+                    if not mlr_vars:
+                        errors.append(f"MLR model selected for sector '{sec_name}' but no independent variables provided.")
+                    else:
+                        sector_df = sector_data_map.get(sec_name)
+                        if sector_df is not None:
+                            for var in mlr_vars:
+                                if var not in sector_df.columns:
+                                    errors.append(f"Independent variable '{var}' for MLR in sector '{sec_name}' not found in sector data.")
+                                elif sector_df[var].isnull().all():
+                                    errors.append(f"Independent variable '{var}' for MLR in sector '{sec_name}' contains all null values.")
+
+
+                # Validate WAM window size
+                if 'WAM' in models:
+                    window_size_str = sec_cfg.get('windowSize')
+                    if window_size_str is None:
+                        errors.append(f"WAM model selected for sector '{sec_name}' but no window size provided.")
+                    else:
+                        try:
+                            window_size = int(window_size_str)
+                            if not (VALIDATION_RULES['MIN_WAM_WINDOW'] <= window_size <= VALIDATION_RULES['MAX_WAM_WINDOW']):
+                                errors.append(f"WAM window size for sector '{sec_name}' must be between {VALIDATION_RULES['MIN_WAM_WINDOW']} and {VALIDATION_RULES['MAX_WAM_WINDOW']}.")
+                        except ValueError:
+                             errors.append(f"Invalid window size '{window_size_str}' for WAM in sector '{sec_name}'. Must be an integer.")
+        except FileNotFoundError:
+            errors.append(f"Input data file not found for project '{project_name}'. Cannot validate configuration.")
+        except ValueError as ve: # Catch data loading/validation errors
+             errors.append(f"Error loading input data for validation: {str(ve)}")
         except Exception as e:
-            errors.append(f"Error during validation against input data: {str(e)}")
+            logger.exception(f"Unexpected error during forecast config validation for project '{project_name}': {e}")
+            errors.append(f"An unexpected error occurred during validation: {str(e)}")
         return errors
 
     async def execute_forecast_async(self, project_name: str, config: ForecastJobConfig, job_id: str):
@@ -346,65 +682,143 @@ class DemandProjectionService:
             await asyncio.to_thread(_dump_json_sync)
 
             all_sector_results: List[SectorProcessingResult] = []
+            total_configured_sectors = len(config.sector_configs)
 
-            for i, (sec_name, sec_cfg) in enumerate(config.sector_configs.items()): # Corrected iteration
-                sector_start_time = time.time() # Initialize sector_start_time here
+            # Get the current event loop to schedule job updates from the thread
+            # This loop should be the one FastAPI's BackgroundTask is running on.
+            try:
+                main_event_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                logger.error(f"Job {job_id}: Could not get running event loop. Progress updates might fail.")
+                main_event_loop = None
+
+
+            for i, (sec_name, sec_cfg) in enumerate(config.sector_configs.items()):
+                sector_start_time = time.time()
+                current_sector_message_prefix = f"Processing sector {i+1}/{total_configured_sectors}: '{sec_name}'"
+                await forecast_job_manager.update_job(job_id, current_sector=sec_name, current_message=f"{current_sector_message_prefix} - Starting...")
+
                 selected_models = sec_cfg.get('models', [])
-                model_params_cfg = {}
-                if 'MLR' in selected_models: model_params_cfg['MLR'] = {'independent_vars': sec_cfg.get('independentVars', [])}
-                if 'WAM' in selected_models: model_params_cfg['WAM'] = {'window_size': int(sec_cfg.get('windowSize', 10))}
+                model_params_cfg = {} # Ensure it's always a dict
 
-                # Progress callback for Main_forecasting_function
-                def _sector_progress_callback(prog_percent, current_model_msg):
-                    # This callback runs in the thread of Main_forecasting_function.
-                    # To update job_manager (which is async), we'd need to schedule it on the event loop.
-                    # For simplicity here, we might log or store progress temporarily.
-                    # A more robust way is to use a queue or another async-safe communication.
-                    loop = asyncio.get_event_loop() # Get current loop if any, or main loop
-                    current_job_progress = 15 + int(((i + (prog_percent / 100)) / len(config.sector_configs)) * 70)
-                    asyncio.run_coroutine_threadsafe(
-                        forecast_job_manager.update_job(
-                            job_id,
-                            progress=current_job_progress,
-                            current_message=f"{sec_name} - {current_model_msg}"
-                        ),
-                        loop # Assuming Main_forecasting_function is run in a thread managed by FastAPI or similar
+                # Prepare model_params carefully, converting windowSize if present
+                raw_mlr_params = sec_cfg.get('mlrParams', {}) # Assuming frontend might send it this way
+                raw_wam_params = sec_cfg.get('wamParams', {})
+
+                if 'MLR' in selected_models:
+                    model_params_cfg['MLR'] = {'independent_vars': sec_cfg.get('independentVars', [])}
+                if 'WAM' in selected_models:
+                    window_size_val = sec_cfg.get('windowSize', wam_params.get('window_size', 10)) # Check sec_cfg then global
+                    try:
+                        model_params_cfg['WAM'] = {'window_size': int(window_size_val)}
+                    except (ValueError, TypeError):
+                        logger.warning(f"Job {job_id}, Sector {sec_name}: Invalid window size '{window_size_val}'. Defaulting to 10.")
+                        model_params_cfg['WAM'] = {'window_size': 10}
+
+                # Check if sector data is available
+                if sec_name not in sector_data_map or sector_data_map[sec_name].empty:
+                    logger.warning(f"Job {job_id}: No data for sector '{sec_name}'. Skipping forecast.")
+                    s_result = SectorProcessingResult(
+                        sector_name=sec_name, status='failed',
+                        message="No input data found for this sector or data is empty.",
+                        error="Missing or empty sector data sheet.",
+                        processing_time_seconds=time.time() - sector_start_time,
+                        configuration_used=sec_cfg
                     )
+                    all_sector_results.append(s_result)
+                    await forecast_job_manager.add_sector_result(job_id, s_result)
+                    # Update overall progress immediately
+                    current_job_progress = 15 + int(((i + 1) / total_configured_sectors) * 70) # Mark this sector as "done" for progress
+                    await forecast_job_manager.update_job(job_id, progress=current_job_progress)
+                    continue
 
+
+                def _sector_progress_callback(progress_percent_sector: int, cb_sector_name: str, cb_message: str):
+                    if main_event_loop and not main_event_loop.is_closed():
+                        # Calculate overall progress: 10% for initial setup, 70% for sectors, 15% for finalization
+                        # This sector's contribution to the 70%
+                        overall_progress_for_sector = (progress_percent_sector / 100.0) / total_configured_sectors
+                        # Progress from previous sectors + current sector's partial progress
+                        current_overall_progress = 15 + int(((i + (progress_percent_sector / 100.0)) / total_configured_sectors) * 70)
+
+                        full_message = f"{current_sector_message_prefix} - {cb_message}"
+                        asyncio.run_coroutine_threadsafe(
+                            forecast_job_manager.update_job(
+                                job_id,
+                                progress=current_overall_progress,
+                                current_message=full_message
+                            ),
+                            main_event_loop
+                        )
+                    else:
+                        logger.warning(f"Job {job_id}: Event loop not available or closed. Cannot update progress for {cb_sector_name} - {cb_message}")
 
                 try:
-                    # Main_forecasting_function is likely CPU-bound and synchronous.
-                    # Run it in a thread pool to avoid blocking the event loop.
+                    sector_df = sector_data_map[sec_name]
+                    # Ensure main_df is a DataFrame, not None or other type
+                    if not isinstance(sector_df, pd.DataFrame):
+                         raise TypeError(f"Data for sector '{sec_name}' is not a pandas DataFrame.")
+
                     sector_forecast_result = await asyncio.to_thread(
                         Main_forecasting_function,
                         sheet_name=sec_name,
-                        forecast_path=str(project_results_dir), # Ensure path is string
-                        main_df=sector_data_map[sec_name],
+                        forecast_path=str(project_results_dir),
+                        main_df=sector_df, # Pass the actual DataFrame for the sector
                         selected_models=selected_models,
                         model_params=model_params_cfg,
                         target_year=config.target_year,
                         exclude_covid=config.exclude_covid_years,
-                        progress_callback=_sector_progress_callback # Pass the callback
+                        progress_callback=_sector_progress_callback
                     )
-                    # Assuming sector_forecast_result is a dict from Main_forecasting_function
-                    # Adapt this based on actual return type of Main_forecasting_function
+
+                    # Interpret result from Main_forecasting_function
+                    if sector_forecast_result.get('status') == 'success':
+                        s_status = 'success'
+                        if sector_forecast_result.get('used_existing_data', False):
+                            s_status = 'existing_data' # Special status if no forecast was run
+
+                        s_result = SectorProcessingResult(
+                            sector_name=sec_name, status=s_status,
+                            message=sector_forecast_result.get('message', 'Completed successfully.'),
+                            models_used=sector_forecast_result.get('models_used', selected_models),
+                            processing_time_seconds=round(time.time() - sector_start_time, 2),
+                            configuration_used=sec_cfg
+                        )
+                    elif sector_forecast_result.get('status') == 'warning': # Handle warnings as partial success or note
+                        s_result = SectorProcessingResult(
+                            sector_name=sec_name, status='warning', # Or map to 'success' with notes
+                            message=sector_forecast_result.get('message', 'Completed with warnings.'),
+                            error=sector_forecast_result.get('error_details'), # Optional error detail
+                            models_used=sector_forecast_result.get('models_used', []),
+                            processing_time_seconds=round(time.time() - sector_start_time, 2),
+                            configuration_used=sec_cfg
+                        )
+                    else: # Error status
+                        s_result = SectorProcessingResult(
+                            sector_name=sec_name, status='failed',
+                            message=sector_forecast_result.get('message', 'Forecasting failed for this sector.'),
+                            error=sector_forecast_result.get('error_details', 'Unknown error during forecasting.'),
+                            processing_time_seconds=round(time.time() - sector_start_time, 2),
+                            configuration_used=sec_cfg
+                        )
+                except Exception as e_sec:
+                    logger.error(f"Job {job_id}: Unhandled error during forecasting sector '{sec_name}': {e_sec}", exc_info=True)
                     s_result = SectorProcessingResult(
-                        sector_name=sec_name, status='success',
-                        message=sector_forecast_result.get('message', 'Completed'),
-                        models_used=sector_forecast_result.get('models_used', selected_models),
-                        processing_time_seconds=time.time() - sector_start_time,
+                        sector_name=sec_name, status='failed',
+                        message=f"An unexpected error occurred: {str(e_sec)}",
+                        error=str(e_sec),
+                        processing_time_seconds=round(time.time() - sector_start_time, 2),
                         configuration_used=sec_cfg
                     )
-                except Exception as e_sec:
-                    logger.error(f"Error forecasting sector {sec_name}: {e_sec}", exc_info=True)
-                    s_result = SectorProcessingResult(
-                        sector_name=sec_name, status='failed', message=str(e_sec), error=str(e_sec),
-                        processing_time_seconds=time.time() - sector_start_time, configuration_used=sec_cfg
-                    )
+
                 all_sector_results.append(s_result)
                 await forecast_job_manager.add_sector_result(job_id, s_result)
+                # Update overall progress after each sector is fully processed by Main_forecasting_function
+                final_sector_progress = 15 + int(((i + 1) / total_configured_sectors) * 70)
+                await forecast_job_manager.update_job(job_id, progress=final_sector_progress, current_message=f"{current_sector_message_prefix} - {s_result.message}")
 
-            # Finalize job
+            # Finalize job: Set progress to 85 initially, then 100 upon completion of summary
+            await forecast_job_manager.update_job(job_id, progress=85, current_message="Aggregating results...")
             # Create a summary of all_sector_results
             successful_sectors_count = sum(1 for sr in all_sector_results if sr.status == 'success')
             failed_sectors_count = sum(1 for sr in all_sector_results if sr.status == 'failed')
