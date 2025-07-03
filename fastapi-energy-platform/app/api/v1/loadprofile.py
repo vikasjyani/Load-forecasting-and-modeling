@@ -219,9 +219,168 @@ async def upload_template_api(
         logger.exception(f"Error uploading template for project {project_name}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Other API endpoints from the Flask blueprint like /api/template_info, /api/available_base_years,
-# /api/scenario_info, /api/preview_base_profiles, /api/profile_analysis, /api/compare_profiles
-# would be translated similarly using APIRouter, Pydantic, Depends, and async service calls.
+# --- Pydantic Models (from app.models.loadprofile) ---
+# Assuming these are defined in app.models.loadprofile and imported here
+# For brevity, not re-listing all of them, but they would be imported:
+from app.models.loadprofile import (
+    LoadProfileGenerationRequest, # Using a more generic one for payload
+    LoadProfileResponse, # For single profile GET
+    # Need Pydantic models for preview_base_profiles payload, scenario_info, analysis, comparison
+    # For now, using basic BaseModel or Dict for some payloads.
+)
+from app.models.common import SuccessResponse # General success response
 
-logger.info("Load Profile (Generation/Management) API router defined for FastAPI.")
-print("Load Profile (Generation/Management) API router defined for FastAPI.")
+
+# --- API Endpoints (Derived from Flask blueprint) ---
+
+@router.get("/{project_name}/template_info", summary="Get Load Curve Template Information")
+async def get_template_info_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        info = await service.get_template_info(project_name)
+        return info # Service method already handles ResourceNotFound for template
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: # Catch-all for unexpected
+        logger.exception(f"Unexpected error getting template info for project {project_name}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@router.get("/{project_name}/available_base_years", summary="Get Available Base Years for Profiles")
+async def get_available_base_years_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        years = await service.get_available_base_years(project_name)
+        return {"project_name": project_name, "available_base_years": years}
+    except ProcessingError as e: # If service raises this for other reasons
+        raise HTTPException(status_code=500, detail=str(e))
+    # No ResourceNotFoundError expected here from service as it returns [] if template missing
+
+class PreviewBaseProfilesPayload(BaseModel):
+    base_year: int
+
+@router.post("/{project_name}/preview_base_profiles", summary="Preview Base Load Profiles")
+async def preview_base_profiles_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    payload: PreviewBaseProfilesPayload,
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        # The service method for this needs to be implemented in LoadProfileService
+        # For now, assuming a placeholder or future implementation that takes base_year
+        # preview_data = await service.preview_base_profiles(project_name, payload.base_year)
+        # return preview_data
+        raise HTTPException(status_code=501, detail="Preview base profiles endpoint not fully implemented in service yet.")
+    except ValueError as e: # From service if base_year is invalid
+        raise HTTPException(status_code=422, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Reusing BaseProfileGenerationPayload and StlProfileGenerationPayload defined earlier
+# if they match the structure needed by service.generate_profile's 'config' dict.
+# For Flask, it was flat JSON. Let's ensure Pydantic models match.
+
+# The service's `generate_profile` takes a `config: Dict[str, Any]`.
+# The Pydantic models BaseProfileGenerationPayload & StlProfileGenerationPayload can be used directly.
+
+@router.get("/{project_name}/profiles", summary="List All Saved Load Profiles", response_model=List[Dict[str, Any]]) # Adjust response_model
+async def list_saved_profiles_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        profiles = await service.list_saved_profiles(project_name)
+        return profiles
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{project_name}/profiles/{profile_id}", summary="Get Specific Load Profile Data", response_model=Dict[str,Any]) # Adjust response_model
+async def get_profile_data_api( # Renamed from Flask's get_profile_data_route
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        profile_data = await service.get_profile_detailed_data(project_name, profile_id)
+        return profile_data
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Download endpoint already exists.
+
+# Delete endpoint already exists.
+
+# Upload template endpoint already exists.
+
+# Placeholder for Demand Scenario Info (if needed separately from generation payload)
+@router.get("/{project_name}/demand_scenario/{scenario_name}", summary="Get Demand Scenario Information")
+async def get_demand_scenario_info_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: str = FastAPIPath(..., description="Name of the demand projection scenario"),
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        # This service method needs to be implemented in LoadProfileService
+        # It would use ProjectLoadProfileManager.load_demand_scenario_data
+        # scenario_data = await service.get_demand_scenario_info(project_name, scenario_name)
+        # return scenario_data
+        # For now:
+        manager = await service._get_project_generator(project_name)
+        df = await manager.load_demand_scenario_data(scenario_name)
+        if df.empty:
+            raise ResourceNotFoundError(f"Scenario {scenario_name} has no data or does not exist.")
+        return {"project_name":project_name, "scenario_name": scenario_name, "data_preview": df.head().to_dict("records"), "num_rows": len(df)}
+
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error getting demand scenario info for {project_name}/{scenario_name}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Analysis and Comparison endpoints would follow a similar pattern:
+# Define Pydantic models for their specific request payloads & responses if not already in app.models.loadprofile
+# Implement service methods in LoadProfileService
+# Create router endpoints that call these service methods
+
+class ProfileAnalysisRequestPayload(BaseModel): # Example
+    analysis_type: str # e.g. "peak_analysis"
+    params: Optional[Dict[str, Any]] = None
+
+@router.post("/{project_name}/profiles/{profile_id}/analysis", summary="Analyze a Load Profile")
+async def analyze_profile_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
+    payload: ProfileAnalysisRequestPayload, # This should use the more specific Pydantic models from app.models.loadprofile
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    # service_method = getattr(service, f"analyze_{payload.analysis_type}", None)
+    # if not service_method or not callable(service_method):
+    #     raise HTTPException(status_code=400, detail=f"Invalid analysis type: {payload.analysis_type}")
+    # result = await service_method(project_name, profile_id, payload.params or {})
+    # return result
+    raise HTTPException(status_code=501, detail="Profile analysis endpoint not fully implemented in service yet.")
+
+class CompareProfilesPayload(BaseModel): # Example
+    profile_ids: List[str] = Field(..., min_items=2)
+    metrics: Optional[List[str]] = None
+
+@router.post("/{project_name}/compare_profiles", summary="Compare Multiple Load Profiles")
+async def compare_profiles_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    payload: CompareProfilesPayload,
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    # result = await service.compare_profiles(project_name, payload.profile_ids, payload.metrics)
+    # return result
+    raise HTTPException(status_code=501, detail="Compare profiles endpoint not fully implemented in service yet.")
+
+
+logger.info("Load Profile API router defined for FastAPI with new endpoints.")
+print("Load Profile API router defined for FastAPI with new endpoints.")

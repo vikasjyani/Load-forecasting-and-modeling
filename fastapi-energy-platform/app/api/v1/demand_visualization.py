@@ -6,46 +6,26 @@ Provides data for visualizing demand forecasts and scenarios.
 import logging
 from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Path as FastAPIPath
-from pydantic import BaseModel, Field # For request/response models
-from pathlib import Path # For project_path type hint
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from pathlib import Path
+import tempfile # For export
+from datetime import datetime
 
-# Assuming DemandVisualizationService is adapted and available for DI.
-try:
-    from app.services.demand_visualization_service import DemandVisualizationService, ScenarioInfo, ScenarioOutput
-except ImportError:
-    logging.warning("DemandVisualizationService not found, using placeholder for demand visualization API.")
-    # Simplified placeholders
-    class ScenarioInfo(BaseModel): name: str; sectors_count: int; year_range: Dict[str,int]; has_data: bool; file_count: int = 0; last_modified_iso: Optional[str] = None
-    class ScenarioOutput(BaseModel): scenario_name: str; sectors_data: Dict; unit: str = "TWh"
-    class DemandVisualizationService:
-        def __init__(self, project_data_root: Path): self.project_data_root = project_data_root
-        async def list_available_scenarios(self, project_name: str) -> List[ScenarioInfo]: return [ScenarioInfo(name="mock_scenario", sectors_count=1, year_range={"min":2020,"max":2030}, has_data=True)]
-        async def get_scenario_data(self, project_name: str, scenario_name: str, filters: Optional[Dict] = None) -> ScenarioOutput:
-            if scenario_name == "mock_scenario": return ScenarioOutput(scenario_name=scenario_name, sectors_data={"mock_sector": {}})
-            raise FileNotFoundError("Scenario not found")
-        async def get_comparison_data(self, project_name: str, scenario_name1: str, scenario_name2: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
-            s1 = await self.get_scenario_data(project_name, scenario_name1, filters)
-            s2 = await self.get_scenario_data(project_name, scenario_name2, filters)
-            return {"scenario1_data": s1, "scenario2_data": s2, "common_filters": filters or {}}
-        async def save_ui_configuration(self, project_name: str, scenario_name: str, config_type: str, config_data: Dict) -> bool: return True
-        async def load_ui_configuration(self, project_name: str, scenario_name: str, config_type: str) -> Optional[Dict]: return {"mock_config_type": config_type}
-        async def generate_consolidated_results(self, project_name: str, scenario_name: str, model_selection: Dict[str, str], td_losses_config: List[Dict], filters: Optional[Dict] = None) -> Dict[str, Any]: return {"status": "mock_consolidated"}
-        # async def export_data(...) -> Path: # Service would return path to temp file for FileResponse
-        #     temp_file = Path(tempfile.mkstemp(suffix=".csv")[1])
-        #     temp_file.write_text("mock,csv,data")
-        #     return temp_file
-
-
+from app.services.demand_visualization_service import DemandVisualizationService, ScenarioInfo, ScenarioOutput
 from app.utils.error_handlers import ProcessingError, ResourceNotFoundError, ValidationError as CustomValidationError
+from app.utils.helpers import safe_filename # For export filename
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Dependency for DemandVisualizationService ---
 from app.dependencies import get_demand_visualization_service as get_demand_visualization_service_dependency
-# The local get_visualization_service function is no longer needed.
 
 # --- Pydantic Models ---
+# Using models from service if they are Pydantic, or defining API-specific ones here.
+# ScenarioInfo and ScenarioOutput are dataclasses in the service, FastAPI can serialize them.
+
 class ScenarioFilters(BaseModel):
     unit: Optional[str] = Field(default="TWh", example="GWh")
     start_year: Optional[int] = Field(default=None, example=2025)
@@ -57,130 +37,229 @@ class ModelSelectionPayload(BaseModel):
 
 class TdLossItem(BaseModel):
     year: int
-    loss_percentage: float = Field(..., ge=0, le=100)
+    loss_percentage: float = Field(..., ge=0, le=100) # Percentage input
 
 class TdLossesPayload(BaseModel):
     td_losses: List[TdLossItem]
 
-class ConsolidatedPayload(BaseModel):
+class GenerateConsolidatedPayload(BaseModel):
     model_selection: Dict[str, str]
     td_losses: List[TdLossItem]
-    filters: Optional[ScenarioFilters] = None
+    filters: Optional[ScenarioFilters] = None # For display unit of the response mainly
+
+class ScenarioComparisonQuery(BaseModel):
+    scenario1_name: str = Field(..., alias="scenario1")
+    scenario2_name: str = Field(..., alias="scenario2")
+    filters: Optional[ScenarioFilters] = Depends() # Using Depends for nested query params
+
+class ExportQuery(BaseModel):
+    data_type: str = Field(default="consolidated", pattern="^(consolidated|scenario_detail)$")
+    filters: Optional[ScenarioFilters] = Depends()
 
 
 # --- API Endpoints ---
-# Note: The main HTML rendering route is omitted.
 
-@router.get("/{project_name}/scenarios", response_model=List[ScenarioInfo], summary="List Available Scenarios for a Project")
-async def api_get_scenarios(
+@router.get("/{project_name}/scenarios", response_model=List[ScenarioInfo], summary="List Available Scenarios")
+async def list_scenarios_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
         scenarios = await service.list_available_scenarios(project_name=project_name)
-        return scenarios
+        return scenarios # FastAPI handles dataclass list to JSON
     except Exception as e:
-        logger.exception(f"Error getting scenarios for project {project_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error listing scenarios for project {project_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to list scenarios: {str(e)}")
 
 @router.get("/{project_name}/scenario/{scenario_name}", response_model=ScenarioOutput, summary="Get Data for a Specific Scenario")
-async def api_get_scenario_data(
+async def get_scenario_data_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
-    filters: ScenarioFilters = Depends(), # Query parameters via Pydantic model
+    filters: ScenarioFilters = Depends(), # Query parameters via Pydantic model (Depends)
     service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
-        # Pydantic model `filters` will have None for fields not provided in query
-        filter_dict = filters.model_dump(exclude_none=True)
+        filter_dict = filters.model_dump(exclude_none=True) if filters else {}
         data = await service.get_scenario_data(project_name, scenario_name, filter_dict)
-        return data
-    except FileNotFoundError as e:
-        raise ResourceNotFoundError(resource_type="Scenario", resource_id=scenario_name, message=str(e))
+        return data # ScenarioOutput is a dataclass
+    except FileNotFoundError as e: # Service raises FileNotFoundError if scenario/data missing
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.exception(f"Error getting data for scenario {project_name}/{scenario_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve scenario data: {str(e)}")
 
 @router.get("/{project_name}/comparison", summary="Compare Two Scenarios")
-async def api_get_comparison_data(
+async def get_comparison_data_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
-    scenario1: str = Query(..., description="Name of the first scenario for comparison"),
-    scenario2: str = Query(..., description="Name of the second scenario for comparison"),
+    params: ScenarioComparisonQuery = Depends(), # scenario1, scenario2 from query
+    filters: ScenarioFilters = Depends(), # Common filters
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
+):
+    try:
+        filter_dict = filters.model_dump(exclude_none=True) if filters else {}
+        comparison_data = await service.get_comparison_data(
+            project_name, params.scenario1_name, params.scenario2_name, filter_dict
+        )
+        return comparison_data
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error comparing scenarios for project {project_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to compare scenarios: {str(e)}")
+
+@router.get("/{project_name}/model_selection/{scenario_name}", summary="Get Model Selection Config")
+async def get_model_selection_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
+):
+    config = await service.get_model_selection(project_name, scenario_name)
+    if config is None or not config.get("model_selection"): # Service returns {"model_selection": {}} if not found
+        raise HTTPException(status_code=404, detail="Model selection configuration not found or empty.")
+    return config
+
+@router.post("/{project_name}/model_selection/{scenario_name}", summary="Save Model Selection Config")
+async def save_model_selection_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
+    payload: ModelSelectionPayload,
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
+):
+    try:
+        success = await service.save_model_selection(project_name, scenario_name, payload.model_selection)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save model selection configuration.")
+        return {"message": "Model selection configuration saved successfully."}
+    except Exception as e:
+        logger.exception(f"Error saving model selection for {project_name}/{scenario_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving model selection: {str(e)}")
+
+
+@router.get("/{project_name}/td_losses/{scenario_name}", summary="Get T&D Losses Config")
+async def get_td_losses_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
+):
+    config = await service.get_td_losses(project_name, scenario_name)
+    if config is None or not config.get("td_losses"): # Service returns {"td_losses": []} if not found
+        # Allow returning empty list if that's the stored state, but raise if file truly absent and service returns None
+        # The service implementation returns `{"td_losses": []}` if file not found, so this check might be too strict
+        # if an empty list is a valid "not set" state. Assuming for now that `None` means error.
+         raise HTTPException(status_code=404, detail="T&D losses configuration not found or empty.")
+    return config
+
+@router.post("/{project_name}/td_losses/{scenario_name}", summary="Save T&D Losses Config")
+async def save_td_losses_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
+    payload: TdLossesPayload,
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
+):
+    try:
+        success = await service.save_td_losses(project_name, scenario_name, [item.model_dump() for item in payload.td_losses])
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save T&D losses configuration.")
+        return {"message": "T&D losses configuration saved successfully."}
+    except Exception as e:
+        logger.exception(f"Error saving T&D losses for {project_name}/{scenario_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error saving T&D losses: {str(e)}")
+
+
+@router.post("/{project_name}/consolidated_results/{scenario_name}", summary="Generate Or Get Consolidated Results")
+async def generate_or_get_consolidated_results_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
+    payload: Optional[GenerateConsolidatedPayload] = None, # Optional: if not provided, tries to load existing
+    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
+):
+    try:
+        if payload: # If payload provided, generate new
+            result = await service.generate_consolidated_results(
+                project_name, scenario_name, payload.model_selection,
+                [item.model_dump() for item in payload.td_losses],
+                payload.filters.model_dump(exclude_none=True) if payload.filters else None
+            )
+        else: # Attempt to load existing consolidated results (service needs method for this)
+            # This part requires a new service method like `get_existing_consolidated_results`
+            # For now, let's assume if no payload, it's an error or we try to generate with defaults.
+            # Or, we could make payload required for POST.
+            # For simplicity, let's assume POST always means generate. GET for existing.
+            # This endpoint should ideally be just POST for generation.
+            # A GET endpoint for consolidated results would be separate.
+            # Refactoring Flask's POST that also gets if exists is tricky.
+            # For now, require payload for POST.
+             if not payload:
+                raise HTTPException(status_code=422, detail="Payload required to generate consolidated results.")
+             result = await service.generate_consolidated_results(
+                project_name, scenario_name, payload.model_selection,
+                [item.model_dump() for item in payload.td_losses],
+                payload.filters.model_dump(exclude_none=True) if payload.filters else None
+            )
+
+        return result
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error with consolidated results for {project_name}/{scenario_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to process consolidated results: {str(e)}")
+
+@router.get("/{project_name}/analysis_summary/{scenario_name}", summary="Get Analysis Summary for Scenario")
+async def get_analysis_summary_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
     filters: ScenarioFilters = Depends(),
     service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
-        filter_dict = filters.model_dump(exclude_none=True)
-        comparison_data = await service.get_comparison_data(project_name, scenario1, scenario2, filter_dict)
-        return comparison_data
-    except FileNotFoundError as e: # If one of the scenarios is not found
-        raise ResourceNotFoundError(resource_type="Scenario", message=str(e))
+        filter_dict = filters.model_dump(exclude_none=True) if filters else {}
+        summary = await service.get_analysis_summary(project_name, scenario_name, filter_dict)
+        return summary
+    except ProcessingError as e: # e.g. model selection not done
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.exception(f"Error comparing scenarios for project {project_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error getting analysis summary for {project_name}/{scenario_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to get analysis summary: {str(e)}")
 
-
-@router.get("/{project_name}/ui_config/{scenario_name}/{config_type}", summary="Get UI Configuration")
-async def api_get_ui_config(
+@router.get("/{project_name}/export/{scenario_name}", summary="Export Scenario Data")
+async def export_scenario_data_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
-    config_type: str = FastAPIPath(..., description="Type of config (e.g., 'model_selection', 'td_losses')"),
+    export_params: ExportQuery = Depends(), # data_type and filters from query
     service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
-        config = await service.load_ui_configuration(project_name, scenario_name, config_type)
-        if config is None:
-            raise ResourceNotFoundError(resource_type=f"{config_type} configuration for scenario", resource_id=scenario_name)
-        return {"config_type": config_type, "configuration": config}
-    except ResourceNotFoundError as e:
-        raise e
-    except Exception as e:
-        logger.exception(f"Error getting UI config {config_type} for {project_name}/{scenario_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        filter_dict = export_params.filters.model_dump(exclude_none=True) if export_params.filters else {}
+        file_path = await service.export_data(project_name, scenario_name, export_params.data_type, filter_dict)
 
-@router.post("/{project_name}/ui_config/{scenario_name}/{config_type}", summary="Save UI Configuration")
-async def api_save_ui_config(
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        download_name = f"{safe_filename(scenario_name)}_{export_params.data_type}_{timestamp}.csv"
+
+        return FileResponse(path=file_path, filename=download_name, media_type='text/csv')
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e: # For invalid data_type
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error exporting data for {project_name}/{scenario_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to export data: {str(e)}")
+
+@router.get("/{project_name}/validate_configurations/{scenario_name}", summary="Validate Scenario Configurations")
+async def validate_scenario_configs_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
-    config_type: str = FastAPIPath(..., description="Type of config (e.g., 'model_selection', 'td_losses')"),
-    config_data: Dict[str, Any] = Body(...), # Generic dict for now, can be specific Pydantic models
-    service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
-):
-    # Add specific validation for config_data based on config_type if needed
-    # e.g., if config_type == "model_selection", expect ModelSelectionPayload
-    try:
-        success = await service.save_ui_configuration(project_name, scenario_name, config_type, config_data)
-        if not success:
-            raise ProcessingError(message=f"Failed to save {config_type} configuration.")
-        return {"message": f"{config_type} configuration saved successfully for scenario '{scenario_name}'."}
-    except Exception as e:
-        logger.exception(f"Error saving UI config {config_type} for {project_name}/{scenario_name}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{project_name}/consolidated/{scenario_name}", summary="Generate Consolidated Results")
-async def api_generate_consolidated_results(
-    project_name: str = FastAPIPath(..., description="The name of the project"),
-    scenario_name: str = FastAPIPath(..., description="The name of the scenario"),
-    payload: ConsolidatedPayload,
     service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
-        result = await service.generate_consolidated_results(
-            project_name, scenario_name, payload.model_selection,
-            [item.model_dump() for item in payload.td_losses], # Convert Pydantic items to dicts
-            payload.filters.model_dump(exclude_none=True) if payload.filters else None
-        )
-        if "error" in result: # Check if service method returned an error structure
-            raise ProcessingError(message=result["error"])
-        return result
+        validation_results = await service.validate_scenario_configurations(project_name, scenario_name)
+        return validation_results
     except Exception as e:
-        logger.exception(f"Error generating consolidated results for {project_name}/{scenario_name}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Omitted: /api/analysis, /api/export, /api/validate from Flask blueprint.
-# These would require more complex Pydantic models for request/response and potentially
-# FileResponse for export, or significant adaptation of the service methods.
+        logger.exception(f"Error validating configurations for {project_name}/{scenario_name}")
+        raise HTTPException(status_code=500, detail=f"Failed to validate configurations: {str(e)}")
 
 logger.info("Demand Visualization API router defined for FastAPI.")
 print("Demand Visualization API router defined for FastAPI.")
