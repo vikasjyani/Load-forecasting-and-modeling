@@ -296,7 +296,51 @@ const PyPSAModeling = () => {
     });
   };
 
-  const renderExtractedDataTable = (dataArray, keyPrefix, headers) => {
+// Attempt to import chart components
+// User will need to install these: npm install chart.js react-chartjs-2
+import { Bar, Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  TimeScale, // For time-series data
+  TimeSeriesScale, // For time-series data if using that specific scale type
+  Filler, // For area charts
+} from 'chart.js';
+import 'chartjs-adapter-date-fns'; // If using date-fns for time scale
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  TimeScale,
+  TimeSeriesScale,
+  Filler
+);
+
+
+const renderExtractedDataTable = (dataArray, keyPrefix, headers) => {
+    // Helper to truncate long strings or stringify objects/arrays for table cells
+    const formatCellData = (cellData) => {
+        if (typeof cellData === 'object' && cellData !== null) {
+            const str = JSON.stringify(cellData);
+            return str.length > 75 ? str.substring(0, 72) + "..." : str;
+        }
+        const strCellData = String(cellData);
+        return strCellData.length > 75 ? strCellData.substring(0, 72) + "..." : strCellData;
+    };
+
     return (
       <Table
         headers={headers}
@@ -304,8 +348,12 @@ const PyPSAModeling = () => {
         renderRow={(row, rowIndex) => (
           <tr key={`${keyPrefix}-${rowIndex}`} style={{backgroundColor: rowIndex % 2 === 0 ? 'white' : '#f0f8ff'}}>
             {headers.map(header => (
-              <td key={`${keyPrefix}-${rowIndex}-${header}`} style={{border: '1px solid #ddd', padding: '8px', whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis'}}>
-                {typeof row[header] === 'object' ? JSON.stringify(row[header]) : String(row[header])}
+              <td
+                key={`${keyPrefix}-${rowIndex}-${header}`}
+                title={typeof row[header] === 'object' ? JSON.stringify(row[header]) : String(row[header])} // Full data on hover
+                style={{border: '1px solid #ddd', padding: '8px', whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis'}}
+              >
+                {formatCellData(row[header])}
               </td>
             ))}
           </tr>
@@ -314,10 +362,156 @@ const PyPSAModeling = () => {
     );
   };
 
+  const renderExtractedDataCharts = (extractedData) => {
+    if (!extractedData || !extractedData.data || !extractedData.metadata) return <p>No chart data available or metadata missing.</p>;
+
+    const dataContent = extractedData.data;
+    const funcName = extractedData.metadata.extraction_function;
+    const providedColors = extractedData.colors || {}; // Colors from backend if available
+
+    const chartHeight = '400px';
+    const chartContainerStyle = { height: chartHeight, marginBottom: '30px', padding: '10px', border: '1px solid #eee', borderRadius: '5px' };
+
+    // Default chart options
+    const defaultOptions = (titleText, xLabel = 'Category', yLabel = 'Value') => ({
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'top' },
+            title: { display: true, text: titleText },
+            tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+            x: { title: { display: true, text: xLabel }, stacked: false }, // Default to non-stacked
+            y: { title: { display: true, text: yLabel }, stacked: false, beginAtZero: true }
+        }
+    });
+
+    if (funcName === 'dispatch_data_payload_former' && dataContent.generation && dataContent.generation.length > 0) {
+        const generationData = dataContent.generation;
+        // Ensure timestamps are correctly parsed if they are strings
+        const timestamps = (dataContent.timestamps || generationData.map(d => d.index || d.timestamp)).map(ts => new Date(ts));
+
+        const carrierNames = Object.keys(generationData[0]).filter(key => key !== 'index' && key !== 'timestamp' && typeof generationData[0][key] === 'number');
+
+        const datasets = carrierNames.map(carrier => ({
+            label: carrier,
+            data: generationData.map(d => d[carrier]),
+            backgroundColor: providedColors[carrier] || getRandomColor(),
+            borderColor: providedColors[carrier] || getRandomColor(), // Optional: darker border
+            borderWidth: 1,
+        }));
+
+        const chartData = { labels: timestamps, datasets };
+        const options = defaultOptions('Generation Dispatch by Carrier', 'Timestamp', `Energy (${extractedData.metadata.unit || 'MWh'})`);
+        options.scales.x = { type: 'time', time: { unit: 'hour', tooltipFormat: 'MMM d, yyyy HH:mm' }, title: { display: true, text: 'Timestamp' }, stacked: true };
+        options.scales.y.stacked = true;
+
+        return <div style={chartContainerStyle}><Bar data={chartData} options={options} /></div>;
+    }
+
+    if (funcName === 'carrier_capacity_payload_former' && dataContent.by_carrier && dataContent.by_carrier.length > 0) {
+        const capacityByCarrier = dataContent.by_carrier;
+        const labels = capacityByCarrier.map(item => item.Carrier);
+        const dataValues = capacityByCarrier.map(item => item.Capacity);
+        const unit = extractedData.metadata.unit || capacityByCarrier[0]?.Unit || 'MW';
+
+        const chartData = {
+            labels: labels,
+            datasets: [{
+                label: `Installed Capacity`,
+                data: dataValues,
+                backgroundColor: labels.map(label => providedColors[label] || getRandomColor()),
+            }]
+        };
+        const options = defaultOptions(`Installed Capacity by Carrier (${unit})`, `Capacity (${unit})`, 'Carrier');
+        options.indexAxis = 'y'; // Horizontal bar chart
+        options.plugins.legend.display = false;
+
+        return <div style={{...chartContainerStyle, height: `${100 + labels.length * 25}px` }}><Bar data={chartData} options={options} /></div>;
+    }
+
+    if (funcName === 'new_capacity_additions_payload_former' && dataContent.new_capacity && dataContent.new_capacity.length > 0) {
+        const newCapacityData = dataContent.new_capacity;
+        const labels = newCapacityData.map(item => `${item.Carrier} (${item.Region || 'N/A'})`);
+        const dataValues = newCapacityData.map(item => item.New_Capacity);
+        const unit = extractedData.metadata.unit || newCapacityData[0]?.Unit || 'MW';
+
+        const chartData = {
+            labels: labels,
+            datasets: [{
+                label: `New Capacity Additions`,
+                data: dataValues,
+                backgroundColor: newCapacityData.map(item => providedColors[item.Carrier] || getRandomColor()),
+            }]
+        };
+        const options = defaultOptions(`New Capacity Additions (${unit})`, `Capacity Added (${unit})`, 'Technology/Region');
+        options.indexAxis = 'y';
+        options.plugins.legend.display = false;
+        return <div style={{...chartContainerStyle, height: `${100 + labels.length * 25}px` }}><Bar data={chartData} options={options} /></div>;
+    }
+
+    if (funcName === 'emissions_payload_former' && dataContent.emissions_timeseries && dataContent.emissions_timeseries.length > 0) {
+        const emissionsData = dataContent.emissions_timeseries;
+        const timestamps = (dataContent.timestamps || emissionsData.map(d => d.index || d.timestamp)).map(ts => new Date(ts));
+        const unit = extractedData.metadata.unit || 'tCO2';
+
+        // Assuming emissions_timeseries is an array of objects like [{timestamp: '...', 'CO2': 123, 'SOx': 45}, ...]
+        // Or if it's simpler: [{timestamp: '...', value: 123}]
+        // For this example, let's assume a 'total_emissions' key or similar.
+        // If multiple pollutants, would need to adapt like dispatch.
+        const pollutantKey = Object.keys(emissionsData[0]).find(k => k !== 'index' && k !== 'timestamp' && typeof emissionsData[0][k] === 'number');
+
+        if (!pollutantKey) return <p>Could not determine pollutant data key for emissions chart.</p>;
+
+        const datasets = [{
+            label: `${pollutantKey.replace(/_/g, ' ')} Emissions`,
+            data: emissionsData.map(d => d[pollutantKey]),
+            borderColor: 'rgba(255, 99, 132, 0.8)',
+            backgroundColor: 'rgba(255, 99, 132, 0.5)',
+            tension: 0.1,
+            fill: true,
+        }];
+
+        const chartData = { labels: timestamps, datasets };
+        const options = defaultOptions(`${pollutantKey.replace(/_/g, ' ')} Emissions Over Time`, 'Timestamp', `Emissions (${unit})`);
+        options.scales.x = { type: 'time', time: { unit: 'day', tooltipFormat: 'MMM d, yyyy HH:mm' }, title: { display: true, text: 'Timestamp' }};
+
+        return <div style={chartContainerStyle}><Line data={chartData} options={options} /></div>;
+    }
+
+
+    if (funcName === 'extract_api_prices_data_payload_former' && dataContent.price_duration_curve && dataContent.price_duration_curve.length > 0) {
+        const priceData = dataContent.price_duration_curve;
+        const unit = extractedData.metadata.unit_price || 'EUR/MWh';
+        const chartData = {
+            labels: priceData.map(p => p.duration_hours),
+            datasets: [{
+                label: `Price Duration Curve (${unit})`,
+                data: priceData.map(p => p.price_value),
+                borderColor: 'rgba(153, 102, 255, 0.8)',
+                backgroundColor: 'rgba(153, 102, 255, 0.5)',
+                tension: 0.1,
+                pointRadius: 0, // Cleaner for duration curves
+            }]
+        };
+        const options = defaultOptions('Price Duration Curve', 'Duration (Hours)', `Price (${unit})`);
+        options.scales.x.type = 'linear'; // Duration is linear
+        return <div style={chartContainerStyle}><Line data={chartData} options={options} /></div>;
+    }
+
+
+    return <p>No specific chart preview available for '{funcName}'. View raw data in tables below.</p>;
+  };
+
+  // Helper to generate random colors for charts if not provided - ensure it's defined if used.
+  const getRandomColor = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+
+
   return (
     <div style={{fontFamily: 'Arial, sans-serif', color: '#333', padding: '20px'}}>
       <h2 style={{color: '#0056b3', borderBottom: '2px solid #007bff', paddingBottom: '10px', marginBottom: '20px'}}>
-        PyPSA Power System Modeling: Project <strong>{projectName}</strong>
+        PyPSA Power System Modeling: Project <Input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Default_Project" />
       </h2>
       <AlertMessage message={errorMessages.general} type="error" />
 
@@ -339,8 +533,9 @@ const PyPSAModeling = () => {
             </Select>
           </FormRow>
         ) : (
-          !loadingStates.scenarios && <p>No PyPSA scenario folders found. Create scenarios via 'Run Simulation' or ensure they exist in `PROJECT_DATA_ROOT/{projectName}/results/pypsa/`.</p>
+          !loadingStates.scenarios && <p>No PyPSA scenario folders found for project '{projectName}'. Create scenarios via 'Run Simulation' or ensure they exist.</p>
         )}
+         <Button onClick={fetchAvailableScenarios} disabled={loadingStates.scenarios || !projectName} style={{marginTop:'10px'}}>Refresh Scenarios</Button>
       </Section>
 
       {selectedScenario && (
@@ -376,17 +571,17 @@ const PyPSAModeling = () => {
           <FormRow label="UI Settings Overrides (JSON)">
             <textarea value={uiOverrides} onChange={e => setUiOverrides(e.target.value)} rows={3} placeholder='e.g., {"solving": {"solver_options": {"threads": 4}}}' style={{padding: '8px', border: '1px solid #ced4da', borderRadius: '4px', flexGrow: 1, fontFamily: 'monospace', width: '100%', boxSizing: 'border-box'}}/>
           </FormRow>
-          <Button type="submit" disabled={loadingStates.run || (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED')}>
+          <Button type="submit" disabled={loadingStates.run || !projectName || !runScenarioName || (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED')}>
             {loadingStates.run ? 'Starting...' : (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED' ? `Running (${jobStatus?.status})...` : 'Run Simulation')}
           </Button>
-          <AlertMessage message={errorMessage.run} type="error" />
+          <AlertMessage message={errorMessages.run} type="error" />
         </form>
       </Section>
 
       {jobId && (
         <Section title={`Job Status (ID: ${jobId})`}>
           {loadingStates.status && !jobStatus?.status && <p>Fetching status...</p>}
-          <AlertMessage message={errorMessage.status} type="error" />
+          <AlertMessage message={errorMessages.status} type="error" />
           {jobStatus ? <PreFormatted data={jobStatus} /> : <p>No status data yet.</p>}
           <h4>Job Log Highlights:</h4>
           {jobLog.length > 0 ? (
@@ -397,7 +592,7 @@ const PyPSAModeling = () => {
         </Section>
       )}
 
-      {selectedNetworkFile && (
+      {selectedNetworkFile && selectedScenario && projectName && (
         <Section title={`Extract Data from: ${selectedNetworkFile} (Scenario: ${selectedScenario})`}>
           <form onSubmit={handleExtractData} style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
             <FormRow label="Extraction Function Name">
@@ -411,15 +606,21 @@ const PyPSAModeling = () => {
             <Button type="submit" disabled={loadingStates.extraction}>
               {loadingStates.extraction ? 'Extracting...' : 'Extract Data'}
             </Button>
-            <AlertMessage message={errorMessage.extraction} type="error" />
+            <AlertMessage message={errorMessages.extraction} type="error" />
           </form>
           {extractedPyPSAData && (
             <div style={{marginTop: '20px'}}>
               <h4 style={{color:'#0056b3'}}>Extracted Data Preview:</h4>
               <AlertMessage message={extractedPyPSAData.metadata?.error} type="error" />
+              {/* Render Charts First */}
+              {extractedPyPSAData.data && renderExtractedDataCharts(extractedPyPSAData)}
+              {/* Then Render Tables */}
               {extractedPyPSAData.data && renderExtractedDataTables(extractedPyPSAData)}
-              <h5 style={{marginTop:'15px'}}>Full Extraction Response:</h5>
-              <PreFormatted data={extractedPyPSAData} />
+
+              <details style={{marginTop: '15px'}}>
+                <summary style={{cursor: 'pointer', fontWeight: 'bold', color: '#0056b3'}}>View Full Extraction Response (JSON)</summary>
+                <PreFormatted data={extractedPyPSAData} />
+              </details>
             </div>
           )}
         </Section>

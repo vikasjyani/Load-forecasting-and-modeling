@@ -15,13 +15,11 @@ import pypsa
 import pandas as pd
 from fastapi import BackgroundTasks
 
-from app.utils.constants import JOB_STATUS # Assuming similar job status constants
-from app.utils.pypsa_runner import run_pypsa_model_core # Core simulation logic
+from app.utils.constants import JOB_STATUS
+from app.utils.pypsa_runner import run_pypsa_model_core
 from app.utils.helpers import get_file_info, safe_filename, ensure_directory
-# Import pau if it's made available in app.utils
-# For now, direct calls or simplified versions might be used.
-# import app.utils.pypsa_analysis_utils as pau
-
+import app.utils.pypsa_analysis_utils as pau # Moved import to top
+from app.config import Settings # Added for settings access in service if needed directly (e.g. for cache size default)
 
 logger = logging.getLogger(__name__)
 
