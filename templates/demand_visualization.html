@@ -1,0 +1,822 @@
+{% extends "sidebar_layout.html" %}
+
+{% block title %}Demand Visualization & Analysis{% endblock %}
+
+{% block additional_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/demand_visualization.css') }}">
+<style>
+    /* Enhanced chart and table sizing */
+    .chart-wrapper {
+        position: relative;
+        width: 100%;
+        height: 450px;
+        background: var(--neutral-0);
+        border-radius: var(--radius-lg);
+        padding: 1rem;
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 1rem;
+    }
+
+    .chart-wrapper canvas {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .table-wrapper {
+        max-height: 500px;
+        overflow: auto;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .content-grid {
+        display: grid;
+        gap: 2rem;
+    }
+
+    .content-grid.two-col {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .content-grid.three-col {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    /* ENHANCED: Global Filter Status Bar */
+    .filter-status-bar {
+        background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: var(--radius-lg);
+        margin-bottom: 1rem;
+        box-shadow: var(--shadow-md);
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        transition: all 0.3s ease;
+    }
+
+    .filter-status-content {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .filter-status-label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+
+    .filter-status-values {
+        font-weight: 500;
+        font-size: 0.95rem;
+        background: rgba(255, 255, 255, 0.15);
+        padding: 0.25rem 0.75rem;
+        border-radius: var(--radius-md);
+        backdrop-filter: blur(10px);
+    }
+
+    #clearFiltersBtn {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 0.375rem 0.75rem;
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+        backdrop-filter: blur(10px);
+    }
+
+    #clearFiltersBtn:hover {
+        background: rgba(255, 255, 255, 0.3);
+        border-color: rgba(255, 255, 255, 0.5);
+        color: white;
+        transform: translateY(-1px);
+    }
+
+    /* Enhanced metric cards */
+    .metric-card {
+        background: var(--neutral-0);
+        border: 1px solid var(--neutral-200);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.2s ease;
+    }
+
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+        border-color: var(--primary-300);
+    }
+
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--primary-600);
+        margin-bottom: 0.5rem;
+    }
+
+    .metric-label {
+        font-size: 0.875rem;
+        color: var(--neutral-600);
+        font-weight: 500;
+    }
+
+    @media (max-width: 992px) {
+        .content-grid.two-col,
+        .content-grid.three-col {
+            grid-template-columns: 1fr;
+        }
+
+        .chart-wrapper {
+            height: 350px;
+        }
+
+        .filter-status-content {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .chart-wrapper {
+            height: 300px;
+            padding: 0.5rem;
+        }
+
+        .filter-status-bar {
+            padding: 0.5rem 1rem;
+        }
+
+        .filter-status-values {
+            font-size: 0.85rem;
+            padding: 0.2rem 0.5rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block page_header_title %}
+Demand Visualization & Analysis
+{% endblock %}
+
+{% block page_header_subtitle %}
+Interactive Electricity Demand Forecasting Analysis Platform with Global Filters
+{% endblock %}
+
+{% block content %}
+<div class="demand-viz-container">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+        role="alert">
+        <i
+            class="fas {% if category == 'success' %}fa-check-circle{% elif category == 'error' %}fa-exclamation-triangle{% elif category == 'warning' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %} me-2"></i>
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- TOP BAR ROW 1: Scenario Selection + Filters + Actions -->
+    <div class="top-bar-row-1">
+        <div class="scenario-selector-group">
+            <select id="scenarioSelect" class="form-select" aria-label="Select demand forecast scenario">
+                <option value="">Choose a demand forecast scenario...</option>
+                {% for scenario in scenarios %}
+                <option value="{{ scenario.name }}" data-sectors="{{ scenario.sectors_count }}"
+                    data-files="{{ scenario.file_count }}"
+                    data-year-min="{{ scenario.year_range.min if scenario.year_range else 2025 }}"
+                    data-year-max="{{ scenario.year_range.max if scenario.year_range else 2050 }}">
+                    {{ scenario.name }} ({{ scenario.sectors_count }} sectors)
+                </option>
+                {% endfor %}
+            </select>
+            <button class="info-icon-btn" id="scenarioInfoBtn" title="Scenario Overview"
+                aria-label="View scenario information">
+                <i class="fas fa-info"></i>
+            </button>
+        </div>
+
+        <div class="essential-filters" id="essentialFilters">
+            <div class="filter-group">
+                <label for="unitSelect">Unit</label>
+                <select id="unitSelect" class="form-select">
+                    <option value="TWh">TWh</option>
+                    <option value="GWh">GWh</option>
+                    <option value="MWh">MWh</option>
+                    <option value="kWh">kWh</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="startYearSelect">Start Year</label>
+                <select id="startYearSelect" class="form-select">
+                    <!-- Years populated dynamically -->
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="endYearSelect">End Year</label>
+                <select id="endYearSelect" class="form-select">
+                    <!-- Years populated dynamically -->
+                </select>
+            </div>
+        </div>
+
+        <div class="top-bar-actions">
+            <button class="action-btn primary" id="modelSelectionBtn" disabled>
+                <i class="fas fa-cogs"></i>
+                Model Selection
+            </button>
+            <button class="action-btn warning" id="compareScenarioBtn" disabled>
+                <i class="fas fa-balance-scale"></i>
+                Compare
+            </button>
+            <button class="action-btn" id="colorSettingsBtn" disabled>
+                <i class="fas fa-palette"></i>
+                Colors
+            </button>
+        </div>
+    </div>
+
+    <!-- ENHANCED: Global Filter Status Bar -->
+    <div class="filter-status-bar" id="filterStatusBar">
+        <div class="filter-status-content">
+            <span class="filter-status-label">
+                <i class="fas fa-filter me-1"></i>
+                Active Global Filters:
+            </span>
+            <span class="filter-status-values" id="filterStatusValues"></span>
+        </div>
+        <button class="btn btn-sm" id="clearFiltersBtn">
+            <i class="fas fa-times me-1"></i>Clear All Filters
+        </button>
+    </div>
+
+    <!-- TOP BAR ROW 2: Analysis Tabs -->
+    <div class="top-bar-row-2">
+        <div class="analysis-tabs">
+            <button class="analysis-tab active" data-tab="sector-analysis">
+                <i class="fas fa-chart-bar"></i>
+                Sector Analysis
+            </button>
+            <button class="analysis-tab" data-tab="td-losses">
+                <i class="fas fa-chart-line"></i>
+                T&D Losses
+            </button>
+            <button class="analysis-tab" data-tab="consolidated-results">
+                <i class="fas fa-chart-area"></i>
+                Consolidated Results
+            </button>
+            <button class="analysis-tab" data-tab="comparison" id="comparisonTab" style="display: none;">
+                <i class="fas fa-balance-scale"></i>
+                Comparison
+            </button>
+        </div>
+    </div>
+
+    <!-- SECTOR NAVIGATION -->
+    <div class="sector-navbar-container" id="sectorNavbar" style="display: none;">
+        <div class="sector-navbar" id="sectorTabs">
+            <!-- Sector tabs populated dynamically -->
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="main-content-area">
+
+        <!-- SECTOR ANALYSIS CONTENT -->
+        <div class="content-section" id="sectorAnalysisContent">
+            <div class="content-header">
+                <h3>
+                    <i class="fas fa-chart-bar me-2"></i>
+                    <span id="currentSectionTitle">Sector Analysis</span>
+                    <small class="text-muted ms-2" id="sectionFilterInfo"></small>
+                </h3>
+                <div class="content-header-actions">
+                    <button class="action-btn" id="exportDataBtn" disabled>
+                        <i class="fas fa-download"></i>
+                        Export Filtered Data
+                    </button>
+                    <button class="action-btn" id="exportChartBtn" disabled>
+                        <i class="fas fa-image"></i>
+                        Export Chart
+                    </button>
+                </div>
+            </div>
+
+            <div class="content-body">
+                <div id="sectorContentArea">
+                    <div class="empty-state">
+                        <i class="fas fa-chart-line fa-4x text-muted mb-4"></i>
+                        <h5>Select a Scenario to Begin Analysis</h5>
+                        <p>Choose a demand forecast scenario from the dropdown above to start exploring sector-wise
+                            demand data and forecasting models with global filter support.</p>
+                        <small class="text-muted">Global filters will be applied automatically to all components.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- T&D Losses Content -->
+        <div class="content-section" id="tdLossesContent" style="display: none;">
+            <div class="content-header">
+                <h3>
+                    <i class="fas fa-chart-line me-2"></i>
+                    T&D Losses Configuration
+                    <small class="text-muted ms-2">Global filter aware</small>
+                </h3>
+                <div class="content-header-actions">
+                    <button class="action-btn success" id="saveTdLossesBtn">
+                        <i class="fas fa-save"></i>
+                        Save Configuration
+                    </button>
+                </div>
+            </div>
+
+            <div class="content-body">
+                <div class="td-losses-container">
+                    <div class="row">
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-cog me-2"></i>
+                                        T&D Losses Configuration
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="tdLossesForm">
+                                        <!-- T&D losses form will be populated dynamically -->
+                                    </div>
+                                    <button class="btn btn-primary mt-3" id="addTdLossBtn">
+                                        <i class="fas fa-plus me-1"></i>Add Point
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-chart-line me-2"></i>
+                                        Configuration Preview
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-wrapper">
+                                        <canvas id="tdLossesChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consolidated Results Content -->
+        <div class="content-section" id="consolidatedResultsContent" style="display: none;">
+            <div class="content-header">
+                <h3>
+                    <i class="fas fa-chart-area me-2"></i>
+                    Consolidated Results
+                    <small class="text-muted ms-2">With global filters applied</small>
+                </h3>
+                <div class="content-header-actions">
+                    <button class="action-btn primary" id="generateConsolidatedBtn">
+                        <i class="fas fa-calculator"></i>
+                        Generate with Filters
+                    </button>
+                    <button class="action-btn" id="exportConsolidatedBtn">
+                        <i class="fas fa-download"></i>
+                        Export CSV
+                    </button>
+                </div>
+            </div>
+
+            <div class="content-body">
+                <div class="consolidated-container">
+                    <div class="consolidated-summary" id="consolidatedSummary">
+                        <!-- Summary cards will be populated dynamically -->
+                    </div>
+
+                    <div id="consolidatedResults" style="display: none;">
+                        <!-- Consolidated results will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison Content -->
+        <div class="content-section" id="comparisonContent" style="display: none;">
+            <div class="content-header">
+                <h3>
+                    <i class="fas fa-balance-scale me-2"></i>
+                    Scenario Comparison
+                    <small class="text-muted ms-2">Global filters will apply to both scenarios</small>
+                </h3>
+                <div class="content-header-actions">
+                    <button class="action-btn warning" id="exitComparisonBtn">
+                        <i class="fas fa-times"></i>
+                        Exit Comparison
+                    </button>
+                    <button class="action-btn" id="exportComparisonBtn">
+                        <i class="fas fa-download"></i>
+                        Export Comparison
+                    </button>
+                </div>
+            </div>
+
+            <div class="content-body">
+                <div id="comparisonContainer">
+                    <!-- Comparison content will be populated dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Model Selection Modal -->
+<div class="modal-overlay" id="modelSelectionModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-cogs me-2"></i>
+                Model Selection for Consolidated Results
+            </h3>
+            <button class="btn btn-sm btn-outline-secondary" onclick="demandVizApp.hideModal('modelSelectionModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-3">Select the forecasting model for each sector. This configuration will be used for
+                consolidated results generation with the current global filters applied.</p>
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Note:</strong> Global filters will be applied during consolidated results generation.
+            </div>
+            <div id="modelSelectionContent">
+                <!-- Model selection content will be populated dynamically -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="demandVizApp.hideModal('modelSelectionModal')">Cancel</button>
+            <button class="btn btn-primary" id="saveModelSelection">
+                <i class="fas fa-save me-1"></i>Save Configuration
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Compare Scenario Modal -->
+<div class="modal-overlay" id="compareScenarioModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-balance-scale me-2"></i>
+                Compare Scenarios with Global Filters
+            </h3>
+            <button class="btn btn-sm btn-outline-secondary" onclick="demandVizApp.hideModal('compareScenarioModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-3">Select a second scenario to compare with <strong id="currentScenarioName">{{
+                    current_scenario or 'the current scenario' }}</strong>.</p>
+
+            <div class="alert alert-info">
+                <i class="fas fa-filter me-2"></i>
+                <strong>Global Filters:</strong> Current global filters will be applied to both scenarios during comparison.
+            </div>
+
+            <div class="mb-3">
+                <label for="comparisonScenarioSelect" class="form-label">Compare with:</label>
+                <select id="comparisonScenarioSelect" class="form-select">
+                    <option value="">Select scenario to compare...</option>
+                    {% for scenario in scenarios %}
+                    <option value="{{ scenario.name }}">{{ scenario.name }} ({{ scenario.sectors_count }} sectors)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Comparison Type:</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="comparisonType" id="sectorComparison" value="sector" checked>
+                    <label class="form-check-label" for="sectorComparison">
+                        Sector Analysis Comparison
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="comparisonType" id="consolidatedComparison" value="consolidated">
+                    <label class="form-check-label" for="consolidatedComparison">
+                        Consolidated Results Comparison
+                    </label>
+                </div>
+            </div>
+
+            <div id="sectorSelectionDiv" class="mb-3">
+                <label class="form-label">Select Sectors to Compare:</label>
+                <div id="sectorCheckboxes" class="row">
+                    <!-- Sector checkboxes will be populated dynamically -->
+                </div>
+            </div>
+
+            <div class="alert alert-success">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Enhanced Comparison Features:</strong>
+                <ul class="mb-0 mt-2">
+                    <li>Side-by-side sector analysis with global filters</li>
+                    <li>Model performance comparison</li>
+                    <li>Consolidated results comparison</li>
+                    <li>Export filtered comparison charts and data</li>
+                </ul>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="demandVizApp.hideModal('compareScenarioModal')">Cancel</button>
+            <button class="btn btn-primary" id="startComparison">
+                <i class="fas fa-balance-scale me-1"></i>Start Comparison
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Color Settings Modal -->
+<div class="modal-overlay" id="colorSettingsModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-palette me-2"></i>
+                Color Settings
+            </h3>
+            <button class="btn btn-sm btn-outline-secondary" onclick="demandVizApp.hideModal('colorSettingsModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-3">Customize colors for sectors and models. Changes are saved automatically and will be applied to all filtered views.</p>
+
+            <div class="mb-4">
+                <h6>Sector Colors</h6>
+                <div id="sectorColorsGrid" class="color-config-grid">
+                    <!-- Sector color pickers will be populated dynamically -->
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <h6>Model Colors</h6>
+                <div id="modelColorsGrid" class="color-config-grid">
+                    <!-- Model color pickers will be populated dynamically -->
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline-secondary" onclick="window.colorManager?.resetToDefaults?.()">
+                <i class="fas fa-undo me-1"></i>Reset to Defaults
+            </button>
+            <button class="btn btn-primary" onclick="demandVizApp.hideModal('colorSettingsModal')">
+                <i class="fas fa-save me-1"></i>Close
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Scenario Overview Modal -->
+<div class="modal-overlay" id="scenarioOverviewModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-info-circle me-2"></i>
+                Scenario Overview
+            </h3>
+            <button class="btn btn-sm btn-outline-secondary" onclick="demandVizApp.hideModal('scenarioOverviewModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body" id="scenarioOverviewContent">
+            <!-- Scenario details will be populated dynamically -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="demandVizApp.hideModal('scenarioOverviewModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Global Filter Test Modal (Development/Debug) -->
+<div class="modal-overlay" id="filterTestModal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-flask me-2"></i>
+                Global Filter System Test
+            </h3>
+            <button class="btn btn-sm btn-outline-secondary" onclick="demandVizApp.hideModal('filterTestModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-3">Test the global filter system to ensure all components are working correctly.</p>
+            <div class="d-grid gap-2">
+                <button class="btn btn-outline-primary" onclick="demandVizApp.testGlobalFilters()">
+                    <i class="fas fa-play me-1"></i>Run Global Filter Test
+                </button>
+                <button class="btn btn-outline-secondary" onclick="demandVizApp.debugApiCall()">
+                    <i class="fas fa-bug me-1"></i>Debug API Call
+                </button>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="demandVizApp.hideModal('filterTestModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay" style="display: none;">
+    <div class="loading-spinner">
+        <i class="fas fa-spinner fa-spin fa-3x mb-3"></i>
+        <div>Loading...</div>
+    </div>
+</div>
+
+<!-- HIDDEN DATA STORE -->
+<script type="application/json" id="initialData">
+{
+    "scenarios": {{ scenarios | tojson | safe }},
+    "hasScenarios": {{ has_scenarios | tojson | safe }},
+    "currentProject": {{ current_project | tojson | safe }},
+    "globalFilterSystemEnabled": true
+}
+</script>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Chart.js - Must load first -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- Color Manager - Load before main app -->
+<script src="{{ url_for('static', filename='js/color_manager.js') }}"></script>
+
+<!-- Color Initialization - Set up window.AppColors -->
+<script>
+    // Export colors for JavaScript color manager
+    {% if color_manager %}
+    try {
+        {{ color_manager.export_colors_for_js() | safe }}
+    } catch (e) {
+        console.warn('Color manager export failed, using fallback colors');
+        window.AppColors = {
+            sectors: {
+                residential: "#2563EB",
+                commercial: "#059669",
+                industrial: "#DC2626",
+                transportation: "#7C3AED",
+                agriculture: "#16A34A",
+                public: "#EA580C",
+                other: "#6B7280"
+            },
+            models: {
+                MLR: "#3B82F6",
+                SLR: "#10B981",
+                WAM: "#F59E0B",
+                TimeSeries: "#8B5CF6",
+                ARIMA: "#EF4444",
+                Linear: "#06B6D4"
+            },
+            charts: {
+                primary: "#2563EB",
+                secondary: "#059669",
+                tertiary: "#DC2626",
+                quaternary: "#7C3AED",
+                quinary: "#EA580C"
+            }
+        };
+    }
+    {% else %}
+    // Fallback if color manager not available
+    window.AppColors = {
+        sectors: {
+            residential: "#2563EB",
+            commercial: "#059669",
+            industrial: "#DC2626",
+            transportation: "#7C3AED",
+            agriculture: "#16A34A",
+            public: "#EA580C",
+            other: "#6B7280"
+        },
+        models: {
+            MLR: "#3B82F6",
+            SLR: "#10B981",
+            WAM: "#F59E0B",
+            TimeSeries: "#8B5CF6",
+            ARIMA: "#EF4444",
+            Linear: "#06B6D4"
+        },
+        charts: {
+            primary: "#2563EB",
+            secondary: "#059669",
+            tertiary: "#DC2626",
+            quaternary: "#7C3AED",
+            quinary: "#EA580C"
+        }
+    };
+    {% endif %}
+</script>
+
+<!-- Main Application - Load after dependencies -->
+<script src="{{ url_for('static', filename='js/demand_visualization.js') }}"></script>
+
+<!-- Global Functions - Template accessibility helpers -->
+<script>
+    // Global functions for template access
+    window.showNotification = function (type, message, duration) {
+        if (window.demandVizApp && window.demandVizApp.showNotification) {
+            return window.demandVizApp.showNotification(type, message, duration);
+        } else {
+            console.warn('DemandVizApp not initialized yet');
+        }
+    };
+
+    window.exportChart = function (chartId) {
+        if (window.demandVizApp && window.demandVizApp.exportCurrentChart) {
+            return window.demandVizApp.exportCurrentChart();
+        } else {
+            console.warn('DemandVizApp not initialized yet');
+        }
+    };
+
+    window.exportData = function () {
+        if (window.demandVizApp && window.demandVizApp.exportCurrentData) {
+            return window.demandVizApp.exportCurrentData();
+        } else {
+            console.warn('DemandVizApp not initialized yet');
+        }
+    };
+
+    // Enhanced global filter system functions
+    window.applyGlobalFilters = function() {
+        if (window.demandVizApp && window.demandVizApp.applyGlobalFilters) {
+            return window.demandVizApp.applyGlobalFilters();
+        } else {
+            console.warn('DemandVizApp not initialized yet');
+        }
+    };
+
+    window.clearAllFilters = function() {
+        if (window.demandVizApp && window.demandVizApp.clearAllFilters) {
+            return window.demandVizApp.clearAllFilters();
+        } else {
+            console.warn('DemandVizApp not initialized yet');
+        }
+    };
+
+    // Initialize application when DOM is ready
+    document.addEventListener('DOMContentLoaded', function () {
+        const comparisonTab = document.getElementById('comparisonTab');
+        if (comparisonTab) {
+            comparisonTab.style.display = 'none';
+        }
+
+        // Add development keyboard shortcuts for testing
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+Shift+T: Open filter test modal (development)
+            if (e.ctrlKey && e.shiftKey && e.code === 'KeyT') {
+                e.preventDefault();
+                if (window.demandVizApp) {
+                    window.demandVizApp.showModal('filterTestModal');
+                }
+            }
+            
+            // Ctrl+Shift+F: Apply global filters
+            if (e.ctrlKey && e.shiftKey && e.code === 'KeyF') {
+                e.preventDefault();
+                if (window.demandVizApp) {
+                    window.demandVizApp.applyGlobalFilters();
+                }
+            }
+        });
+
+        console.log('✅ Enhanced Demand Visualization with Global Filters initialized');
+    });
+</script>
+{% endblock %}

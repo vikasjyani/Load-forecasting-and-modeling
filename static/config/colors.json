@@ -1,0 +1,195 @@
+{
+  "sectors": {
+    "residential": "#2563EB",
+    "commercial": "#059669",
+    "industrial": "#DC2626",
+    "transportation": "#7C3AED",
+    "agriculture": "#16A34A",
+    "public": "#EA580C",
+    "mining": "#92400E",
+    "construction": "#0891B2",
+    "services": "#BE185D",
+    "healthcare": "#0D9488",
+    "education": "#7C2D12",
+    "hospitality": "#B91C1C",
+    "retail": "#1D4ED8",
+    "finance": "#6B21A8",
+    "technology": "#0F766E",
+    "manufacturing": "#A16207",
+    "utilities": "#DC2626",
+    "government": "#1F2937",
+    "military": "#374151",
+    "other": "#6B7280",
+    "Agriculture": "#2b00ff",
+    "Commercial_lt": "#8b6704",
+    "Domestic_lt": "#fe06c4",
+    "ev_transport": "#4e524c",
+    "green_hydrogen": "#9693ff",
+    "ht_eht": "#6c8604",
+    "industrial_lt": "#000000",
+    "licencees": "#cdb2f6",
+    "public_lighting": "#50e602",
+    "railway_traction": "#b885ab",
+    "solar_rooftop": "#915880",
+    "commercial_lt": "#F04122",
+    "domestic_lt": "#E38111",
+    "others": "#000000"
+  },
+  "models": {
+    "MLR": "#000000",
+    "SLR": "#af9d9d",
+    "WAM": "#000000",
+    "TimeSeries": "#8B5CF6",
+    "ARIMA": "#EF4444",
+    "Linear": "#06B6D4",
+    "Polynomial": "#84CC16",
+    "Exponential": "#F97316",
+    "Logarithmic": "#EC4899",
+    "Power": "#14B8A6",
+    "Neural": "#A855F7",
+    "RandomForest": "#22C55E",
+    "SVM": "#F43F5E",
+    "XGBoost": "#0EA5E9",
+    "LSTM": "#8B5CF6",
+    "Ensemble": "#6366F1",
+    "Hybrid": "#8B5CF6",
+    "Custom": "#6B7280",
+    "User Data": "#000000"
+  },
+  "carriers": {
+    "electricity": "#3B82F6",
+    "natural_gas": "#EF4444",
+    "coal": "#1F2937",
+    "oil": "#92400E",
+    "biomass": "#16A34A",
+    "solar": "#F59E0B",
+    "wind": "#06B6D4",
+    "hydro": "#0891B2",
+    "nuclear": "#7C3AED",
+    "geothermal": "#DC2626",
+    "waste": "#6B7280",
+    "hydrogen": "#8B5CF6",
+    "battery": "#10B981",
+    "pumped_hydro": "#0D9488",
+    "compressed_air": "#84CC16",
+    "thermal": "#F97316",
+    "district_heating": "#EC4899",
+    "district_cooling": "#14B8A6"
+  },
+  "status": {
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "error": "#EF4444",
+    "info": "#3B82F6",
+    "pending": "#6B7280",
+    "active": "#8B5CF6",
+    "inactive": "#9CA3AF",
+    "completed": "#059669",
+    "failed": "#DC2626",
+    "cancelled": "#F97316"
+  },
+  "charts": {
+    "primary": "#2563EB",
+    "secondary": "#059669",
+    "tertiary": "#DC2626",
+    "quaternary": "#7C3AED",
+    "quinary": "#EA580C",
+    "senary": "#0891B2",
+    "septenary": "#BE185D",
+    "octonary": "#16A34A",
+    "nonary": "#F59E0B",
+    "denary": "#8B5CF6",
+    "background": "#FFFFFF",
+    "surface": "#F8FAFC",
+    "grid": "rgba(226, 232, 240, 0.8)",
+    "text": "#1E293B",
+    "axis": "#64748B",
+    "hover": "rgba(241, 245, 249, 0.9)",
+    "border": "#E2E8F0",
+    "shadow": "rgba(0, 0, 0, 0.1)"
+  },
+  "gradients": {
+    "primary": [
+      "#3B82F6",
+      "#1E40AF",
+      "#1D4ED8"
+    ],
+    "secondary": [
+      "#10B981",
+      "#047857",
+      "#059669"
+    ],
+    "tertiary": [
+      "#EF4444",
+      "#B91C1C",
+      "#DC2626"
+    ],
+    "quaternary": [
+      "#8B5CF6",
+      "#6D28D9",
+      "#7C3AED"
+    ],
+    "success": [
+      "#10B981",
+      "#047857",
+      "#059669"
+    ],
+    "warning": [
+      "#F59E0B",
+      "#B45309",
+      "#D97706"
+    ],
+    "error": [
+      "#EF4444",
+      "#B91C1C",
+      "#DC2626"
+    ],
+    "info": [
+      "#3B82F6",
+      "#1E40AF",
+      "#2563EB"
+    ],
+    "chart_area": [
+      "rgba(59, 130, 246, 0.1)",
+      "rgba(59, 130, 246, 0.3)"
+    ],
+    "chart_line": [
+      "#2563EB",
+      "#1D4ED8"
+    ],
+    "heatmap_cool": [
+      "#EFF6FF",
+      "#DBEAFE",
+      "#BFDBFE",
+      "#93C5FD",
+      "#60A5FA",
+      "#3B82F6"
+    ],
+    "heatmap_warm": [
+      "#FEF3C7",
+      "#FDE68A",
+      "#FCD34D",
+      "#FBBF24",
+      "#F59E0B",
+      "#D97706"
+    ]
+  },
+  "themes": {
+    "light": {
+      "background": "#FFFFFF",
+      "surface": "#F8FAFC",
+      "primary": "#2563EB",
+      "secondary": "#64748B",
+      "text": "#1E293B",
+      "border": "#E2E8F0"
+    },
+    "dark": {
+      "background": "#0F172A",
+      "surface": "#1E293B",
+      "primary": "#3B82F6",
+      "secondary": "#94A3B8",
+      "text": "#F1F5F9",
+      "border": "#334155"
+    }
+  }
+}
