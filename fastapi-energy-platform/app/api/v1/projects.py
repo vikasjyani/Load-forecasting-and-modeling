@@ -18,29 +18,20 @@ from app.utils.helpers import create_project_structure, validate_project_structu
 # from app.utils.constants import ERROR_MESSAGES # If used for standardized messages
 # from app.utils.error_handlers import ResourceNotFoundError, ProcessingError, ValidationError # If using these custom exceptions
 
+import json # Added import for json
+from app.config import Settings, settings as global_settings # Import global settings
+
 # Placeholder for session/user management - FastAPI typically uses Depends for this.
-# For now, assuming a way to get user_id, or using a default.
-def get_current_user_id(request: Request) -> str:
-    # In a real app, this would come from an auth dependency that inspects request.
-    # Example: user = await get_current_active_user(request)
-    # return user.id
-    return "default_user" # Placeholder
+# For now, using a fixed user_id as per plan.
+FIXED_USER_ID = "global_user"
 
-# Placeholder for application settings/config
-# In FastAPI, this is often managed via a Pydantic Settings model injected as a dependency.
-class AppSettings: # Placeholder
-    UPLOAD_FOLDER: Path = Path("user_projects_data") # This should be configurable
-    TEMPLATE_FOLDER: Path = Path("app_templates")   # This should be configurable
+def get_current_user_id() -> str: # Removed request: Request dependency
+    """Returns a fixed user ID, as no authentication is implemented."""
+    return FIXED_USER_ID
 
-    def __init__(self):
-        # Ensure base UPLOAD_FOLDER exists
-        self.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-        (self.UPLOAD_FOLDER / "recent_projects").mkdir(parents=True, exist_ok=True)
-        self.TEMPLATE_FOLDER.mkdir(parents=True, exist_ok=True)
-
-
-def get_app_settings(): # Dependency
-    return AppSettings()
+# Dependency to inject global settings
+def get_app_settings() -> Settings:
+    return global_settings
 
 
 logger = logging.getLogger(__name__)
@@ -52,7 +43,7 @@ class ProjectPathPayload(BaseModel):
 
 class CreateProjectPayload(BaseModel):
     projectName: str = Field(..., min_length=1)
-    projectLocation: str = Field(default="", description="Base location for the project, can be relative to a root or absolute.")
+    projectLocation: Optional[str] = Field(default=None, description="Base location for the project, relative to PROJECT_DATA_ROOT/projects or an absolute path.")
 
 class RecentProjectEntry(BaseModel):
     name: str
@@ -62,11 +53,13 @@ class RecentProjectEntry(BaseModel):
 
 
 # --- Helper for Recent Projects (Adapted from Flask version) ---
-async def save_recent_project(user_id: str, project_name: str, project_path: str, settings: AppSettings):
+async def save_recent_project(user_id: str, project_name: str, project_path: str, app_settings: Settings):
     logger.info(f"Saving recent project: '{project_name}' at '{project_path}' for user '{user_id}'")
     try:
-        recent_projects_dir = settings.UPLOAD_FOLDER / "recent_projects"
-        filename = recent_projects_dir / f"{user_id}.json"
+        # Construct paths using PROJECT_DATA_ROOT from injected settings
+        recent_projects_base_dir = app_settings.PROJECT_DATA_ROOT / "recent_projects"
+        recent_projects_base_dir.mkdir(parents=True, exist_ok=True)
+        filename = recent_projects_base_dir / f"{user_id}.json"
 
         recent_projects: List[Dict[str, Any]] = []
         if filename.exists():
@@ -97,9 +90,9 @@ async def save_recent_project(user_id: str, project_name: str, project_path: str
         logger.exception(f"Error saving recent project for user {user_id}: {e}")
         return False
 
-async def get_recent_projects_list(user_id: str, settings: AppSettings) -> List[RecentProjectEntry]:
-    recent_projects_dir = settings.UPLOAD_FOLDER / "recent_projects"
-    filename = recent_projects_dir / f"{user_id}.json"
+async def get_recent_projects_list(user_id: str, app_settings: Settings) -> List[RecentProjectEntry]:
+    recent_projects_base_dir = app_settings.PROJECT_DATA_ROOT / "recent_projects"
+    filename = recent_projects_base_dir / f"{user_id}.json"
     if not filename.exists():
         return []
     try:
@@ -111,9 +104,9 @@ async def get_recent_projects_list(user_id: str, settings: AppSettings) -> List[
         logger.error(f"Error reading recent projects for user {user_id}: {e}")
         return []
 
-async def delete_recent_project_entry(user_id: str, project_path_to_delete: str, settings: AppSettings) -> bool:
-    recent_projects_dir = settings.UPLOAD_FOLDER / "recent_projects"
-    filename = recent_projects_dir / f"{user_id}.json"
+async def delete_recent_project_entry(user_id: str, project_path_to_delete: str, app_settings: Settings) -> bool:
+    recent_projects_base_dir = app_settings.PROJECT_DATA_ROOT / "recent_projects"
+    filename = recent_projects_base_dir / f"{user_id}.json"
     if not filename.exists(): return False
 
     try:
@@ -134,11 +127,11 @@ async def delete_recent_project_entry(user_id: str, project_path_to_delete: str,
 
 # --- API Endpoints ---
 
-@router.post("/create", summary="Create a New Project")
+@router.post("/create", summary="Create a New Project", response_model=Dict[str, Any])
 async def create_project_api(
     payload: CreateProjectPayload = Body(...),
     user_id: str = Depends(get_current_user_id),
-    settings: AppSettings = Depends(get_app_settings)
+    app_settings: Settings = Depends(get_app_settings) # Use the new dependency
 ):
     logger.info(f"Processing create_project request for user '{user_id}'")
     project_name = payload.projectName
@@ -146,25 +139,30 @@ async def create_project_api(
 
     if not project_name:
         raise HTTPException(status_code=400, detail="Project name is required.")
-    if not project_location_input: # Assuming projectLocation is relative to a base if not absolute
-        # Default to a 'projects' subdirectory under UPLOAD_FOLDER
-        base_projects_dir = settings.UPLOAD_FOLDER / "projects"
-    else:
-        # Interpret projectLocation: if it's an absolute path, use it.
-        # If relative, assume it's relative to UPLOAD_FOLDER/projects.
-        # This logic needs to be robust and secure against path traversal.
+
+    # Determine base directory for projects
+    # All projects will be created under PROJECT_DATA_ROOT/projects/
+    # projectLocation can specify a subdirectory within this, or be an absolute path (checked for safety)
+    default_projects_base = app_settings.PROJECT_DATA_ROOT / "projects"
+
+    if project_location_input:
         loc_path = Path(project_location_input)
         if loc_path.is_absolute():
-            # Security check: ensure absolute path is within an allowed base, if applicable
-            # For now, allowing absolute paths if user provides them, but this is risky.
+            # Security: Ensure absolute path is within or equal to PROJECT_DATA_ROOT if specified this way.
+            # This is a very basic check. More robust checks might be needed depending on security requirements.
+            if not str(loc_path.resolve()).startswith(str(app_settings.PROJECT_DATA_ROOT.resolve())):
+                raise HTTPException(status_code=403, detail="Absolute projectLocation is outside the allowed data root.")
             base_projects_dir = loc_path
         else:
-            base_projects_dir = settings.UPLOAD_FOLDER / "projects" / loc_path
+            # Relative to PROJECT_DATA_ROOT/projects/
+            base_projects_dir = default_projects_base / loc_path
+    else:
+        # Default to PROJECT_DATA_ROOT/projects/
+        base_projects_dir = default_projects_base
 
     base_projects_dir.mkdir(parents=True, exist_ok=True)
 
-    # Sanitize project_name for use as a directory name
-    s_project_name = safe_filename(project_name) # Use adapted safe_filename
+    s_project_name = safe_filename(project_name)
     if not s_project_name:
          raise HTTPException(status_code=400, detail="Invalid project name resulting in empty safe filename.")
 
@@ -173,14 +171,27 @@ async def create_project_api(
     logger.debug(f"Attempting to create project at: {project_path}")
 
     if project_path.exists():
-        raise HTTPException(status_code=409, detail=f"Project '{s_project_name}' already exists at this location.")
+        raise HTTPException(status_code=409, detail=f"Project '{s_project_name}' already exists at this location: {project_path}")
 
     try:
-        # create_project_structure should use Path objects and be async or run in threadpool
-        # For now, assuming it's adapted and sync for simplicity here.
-        # template_folder_path = settings.TEMPLATE_FOLDER
-        # result = await asyncio.to_thread(create_project_structure, project_path, template_folder_path)
-        result = create_project_structure(project_path, settings.TEMPLATE_FOLDER) # Using sync version
+        # template_folder_path is typically where global templates are, not from AppSettings directly yet
+        # This might need adjustment if template_folder is part of Settings. For now, assume helpers handle it.
+        # The helper create_project_structure expects the global template root, not one from settings.
+        # For now, let's assume the helper has access to a predefined template location or we pass one.
+        # The global_settings.GLOBAL_FEATURES_CONFIG_PATH.parent / "templates" could be a convention
+        # Or settings.TEMPLATE_FOLDER if defined in app.config.Settings.
+        # For now, using a placeholder that needs to be confirmed:
+        templates_dir = Path(app_settings.BASE_DIR) / "templates" # Assuming templates are at <repo_root>/templates/
+        if not (templates_dir.exists() and templates_dir.is_dir()):
+            # Fallback if BASE_DIR is not what we expect, or templates are elsewhere.
+            # This path needs to be robust. Let's use a relative path from app for now
+            templates_dir = Path(__file__).resolve().parent.parent.parent.parent / "static" / "templates"
+            logger.warning(f"Global templates directory not found via settings, trying default: {templates_dir}")
+
+
+        # result = await create_project_structure(project_path, app_settings.TEMPLATE_FOLDER) # if TEMPLATE_FOLDER is in Settings
+        result = await create_project_structure(project_path, templates_dir)
+
 
         if not result or not result.get('success'):
             error_msg = result.get('message', 'Failed to create project structure.')
@@ -188,17 +199,13 @@ async def create_project_api(
             raise HTTPException(status_code=500, detail=error_msg)
 
         logger.info(f"Project '{project_name}' created at {project_path}")
-        await save_recent_project(user_id, project_name, str(project_path), settings)
+        await save_recent_project(user_id, project_name, str(project_path.resolve()), app_settings)
 
-        # In FastAPI, we don't typically set current_app.config.
-        # The concept of a "current project" needs to be handled differently,
-        # e.g., per user session, via request headers, or path parameters for project-specific routes.
-        # For now, just return success.
 
         return {
             "status": "success",
             "message": f"Project '{project_name}' created successfully!",
-            "project_path": str(project_path), # Return string path
+            "project_path": str(project_path.resolve()),
             "project_name": project_name
         }
     except HTTPException:
@@ -208,11 +215,19 @@ async def create_project_api(
         raise HTTPException(status_code=500, detail=f"Error creating project: {str(e)}")
 
 
-@router.post("/validate", summary="Validate Project Structure")
-async def validate_project_api(payload: ProjectPathPayload = Body(...)):
+@router.post("/validate", summary="Validate Project Structure", response_model=Dict[str, Any])
+async def validate_project_api(
+    payload: ProjectPathPayload = Body(...),
+    app_settings: Settings = Depends(get_app_settings) # Added for consistency, though not directly used here yet
+):
     project_path_str = payload.projectPath
     logger.info(f"Validating project at: {project_path_str}")
     project_path = Path(project_path_str)
+
+    # Security: Ensure project_path is within PROJECT_DATA_ROOT
+    resolved_project_path = project_path.resolve()
+    if not str(resolved_project_path).startswith(str(app_settings.PROJECT_DATA_ROOT.resolve())):
+        raise HTTPException(status_code=403, detail="Access to this project path is forbidden.")
 
     if not project_path.exists():
         raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path_str}")
@@ -220,52 +235,56 @@ async def validate_project_api(payload: ProjectPathPayload = Body(...)):
         raise HTTPException(status_code=400, detail=f"Path is not a directory: {project_path_str}")
 
     try:
-        # validate_project_structure should be adapted to work with Path and be async if needed
-        # result = await asyncio.to_thread(validate_project_structure, project_path)
-        result = validate_project_structure(project_path) # Using sync version
+        result = await validate_project_structure(project_path) # validate_project_structure is async
         return result
     except Exception as e:
         logger.exception(f"Error validating project at {project_path_str}: {e}")
         raise HTTPException(status_code=500, detail=f"Error validating project: {str(e)}")
 
 
-@router.post("/load", summary="Load a Project")
+@router.post("/load", summary="Load a Project", response_model=Dict[str, Any])
 async def load_project_api(
     payload: ProjectPathPayload = Body(...),
     user_id: str = Depends(get_current_user_id),
-    settings: AppSettings = Depends(get_app_settings)
+    app_settings: Settings = Depends(get_app_settings)
 ):
     project_path_str = payload.projectPath
     logger.info(f"Loading project for user '{user_id}' from path: {project_path_str}")
     project_path = Path(project_path_str)
 
+    # Security: Ensure project_path is within PROJECT_DATA_ROOT
+    resolved_project_path = project_path.resolve()
+    if not str(resolved_project_path).startswith(str(app_settings.PROJECT_DATA_ROOT.resolve())):
+        raise HTTPException(status_code=403, detail="Access to this project path is forbidden.")
+
+
     if not project_path.exists() or not project_path.is_dir():
         raise HTTPException(status_code=404, detail=f"Project not found at path: {project_path_str}")
 
     try:
-        # validation_result = await asyncio.to_thread(validate_project_structure, project_path)
-        validation_result = validate_project_structure(project_path)
+        validation_result = await validate_project_structure(project_path) # is async
 
         if validation_result.get('status') == 'error':
             raise HTTPException(status_code=400, detail=f"Project validation failed: {validation_result.get('message')}")
 
         if validation_result.get('status') == 'warning' and validation_result.get('can_fix', False):
             logger.info(f"Attempting to fix missing templates for {project_path_str}")
-            # copy_missing_templates should be Path-aware and potentially async
-            # await asyncio.to_thread(copy_missing_templates, project_path, validation_result.get('missing_templates', []), settings.TEMPLATE_FOLDER)
-            copy_missing_templates(project_path, validation_result.get('missing_templates', []), settings.TEMPLATE_FOLDER)
+            # Similar to create, template_folder needs to be robustly determined
+            templates_dir = Path(app_settings.BASE_DIR) / "templates"
+            if not (templates_dir.exists() and templates_dir.is_dir()):
+                 templates_dir = Path(__file__).resolve().parent.parent.parent.parent / "static" / "templates"
+
+            await copy_missing_templates(project_path, validation_result.get('missing_templates', []), templates_dir)
 
 
         project_name = project_path.name
-        await save_recent_project(user_id, project_name, str(project_path), settings)
+        await save_recent_project(user_id, project_name, str(project_path.resolve()), app_settings)
 
-        # The concept of setting a "current project" in app config doesn't apply directly.
-        # Client would typically store this, or subsequent requests would include project_id/path.
         logger.info(f"Project '{project_name}' loaded successfully by user '{user_id}'.")
         return {
             "status": "success",
             "message": "Project loaded successfully",
-            "project_path": str(project_path),
+            "project_path": str(project_path.resolve()),
             "project_name": project_name,
             "validation_status": validation_result.get('status')
         }
@@ -276,31 +295,33 @@ async def load_project_api(
         raise HTTPException(status_code=500, detail=f"Error loading project: {str(e)}")
 
 
-@router.get("/recent", response_model=List[RecentProjectEntry], summary="Get Recent Projects for Current User")
-async def api_get_recent_projects(
-    user_id: str = Depends(get_current_user_id),
-    settings: AppSettings = Depends(get_app_settings)
+@router.get("/recent", response_model=List[RecentProjectEntry], summary="Get Recent Projects")
+async def api_get_recent_projects( # Removed "for Current User" from summary as it's global
+    user_id: str = Depends(get_current_user_id), # Still pass user_id, even if fixed
+    app_settings: Settings = Depends(get_app_settings)
 ):
-    logger.info(f"Fetching recent projects for user '{user_id}'")
-    return await get_recent_projects_list(user_id, settings)
+    logger.info(f"Fetching recent projects for user '{user_id}' (globally stored)")
+    return await get_recent_projects_list(user_id, app_settings)
 
 
-@router.post("/delete_recent", summary="Delete a Project from Recent List")
-async def api_delete_recent_project_entry( # Renamed to avoid conflict
+@router.post("/delete_recent", summary="Delete a Project from Recent List", response_model=Dict[str, str])
+async def api_delete_recent_project_entry(
     payload: ProjectPathPayload = Body(...),
     user_id: str = Depends(get_current_user_id),
-    settings: AppSettings = Depends(get_app_settings)
+    app_settings: Settings = Depends(get_app_settings)
 ):
-    project_path_to_delete = payload.projectPath
-    logger.info(f"Request to delete '{project_path_to_delete}' from recent projects for user '{user_id}'")
+    project_path_to_delete = payload.projectPath # This is the path stored in recent_projects.json
+    logger.info(f"Request to delete '{project_path_to_delete}' from recent projects for user '{user_id}' (globally stored)")
 
-    success = await delete_recent_project_entry(user_id, project_path_to_delete, settings)
+    # No path validation needed here as we are just removing a string from a JSON list.
+    # The path itself isn't accessed on the filesystem by this operation.
+
+    success = await delete_recent_project_entry(user_id, project_path_to_delete, app_settings)
     if not success:
-        # Could be not found or error during delete
         raise HTTPException(status_code=404, detail=f"Project path '{project_path_to_delete}' not found in recent projects or error deleting.")
 
     return {"status": "success", "message": "Project removed from recent projects."}
 
 
 logger.info("Project management API router defined for FastAPI.")
-print("Project management API router defined for FastAPI.")
+# Removed print statement from here, it's better in main.py or config.py after loading.
