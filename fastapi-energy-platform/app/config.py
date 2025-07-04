@@ -29,8 +29,21 @@ class Settings(BaseSettings):
     # CORS (Cross-Origin Resource Sharing)
     ALLOWED_ORIGINS: List[str] = Field(default=["http://localhost", "http://localhost:3000", "http://localhost:5173"], description="List of allowed origins for CORS.")
 
-    # Example of a setting that might be used by a specific service
-    # DEFAULT_FORECAST_TARGET_YEAR: int = Field(datetime.now().year + 5, description="Default target year for forecasts if not specified.")
+    # PyPSA Specific Settings
+    PYPSA_NETWORK_CACHE_SIZE: int = Field(default=3, ge=1, le=10, description="Maximum number of PyPSA networks to keep in in-memory cache.")
+    GLOBAL_FEATURES_CONFIG_PATH: Path = Field(
+        default_factory=lambda: Path(Settings().BASE_DIR.parent / "app_config_data" / "features.json"), # Access BASE_DIR via self or Settings()
+        description="Path to the global features.json configuration file."
+    )
+    LOGS_DIR: Path = Field(
+        default_factory=lambda: Path(Settings().PROJECT_DATA_ROOT.parent / "app_logs"), # Example: one level above project_data_root
+        description="Directory to store application logs."
+    )
+    TEMP_UPLOAD_DIR: Path = Field(
+        default_factory=lambda: Path(Settings().PROJECT_DATA_ROOT.parent / "temp_uploads"),
+        description="Directory for temporary file uploads."
+    )
+
 
     # Pydantic settings configuration
     model_config = SettingsConfigDict(

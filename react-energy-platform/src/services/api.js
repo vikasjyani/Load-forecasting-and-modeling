@@ -160,7 +160,13 @@ const validateDemandScenario = (projectName, scenarioName) => apiClient.get(`/de
 // Load Profile Analysis Endpoints
 const listAvailableProfilesForAnalysis = (projectName) => apiClient.get(`/loadprofile_analysis/${encodeURIComponent(projectName)}/available_profiles`);
 const getStatisticalSummary = (projectName, profileId, unit = 'kW') => apiClient.get(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/statistical_summary`, { params: { unit } });
-const performLoadProfileAnalysis = (projectName, profileId, analysisType, params = null) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/analyze/${encodeURIComponent(analysisType)}`, params);
+// Specific analysis functions:
+const performPeakAnalysis = (projectName, profileId, params) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/peak_analysis`, params);
+const generateDurationCurve = (projectName, profileId, params) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/duration_curve`, params);
+const performSeasonalAnalysis = (projectName, profileId, params) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/seasonal_analysis`, params);
+const performComprehensiveAnalysis = (projectName, profileId, params) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/comprehensive_analysis`, params);
+const compareLoadProfiles = (projectName, params) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/compare_profiles`, params);
+// const performLoadProfileAnalysis = (projectName, profileId, analysisType, params = null) => apiClient.post(`/loadprofile_analysis/${encodeURIComponent(projectName)}/profile/${encodeURIComponent(profileId)}/analyze/${encodeURIComponent(analysisType)}`, params); // Generic one, commented out
 
 
 export default {
@@ -241,5 +247,10 @@ export default {
 
   listAvailableProfilesForAnalysis, // Added
   getStatisticalSummary, // Added
-  performLoadProfileAnalysis, // Added
+  // performLoadProfileAnalysis, // Generic one, commented out
+  performPeakAnalysis, // Specific
+  generateDurationCurve, // Specific
+  performSeasonalAnalysis, // Specific
+  performComprehensiveAnalysis, // Specific
+  compareLoadProfiles, // Specific
 };

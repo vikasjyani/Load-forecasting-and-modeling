@@ -56,31 +56,155 @@ async def get_statistical_summary_api(
         raise HTTPException(status_code=500, detail=f"Failed to get statistical summary: {str(e)}")
 
 
-# Placeholder for generic analysis endpoint
-# More specific endpoints for each analysis type (peak, seasonal etc.) might be better
-# Or a single endpoint that takes analysis_type and params in request body.
-@router.post("/{project_name}/profile/{profile_id}/analyze/{analysis_type}",
-             response_model=ProfileAnalysisResult, # This is a generic model
-             summary="Perform a Specific Analysis on a Load Profile (Placeholder)")
-async def perform_profile_analysis_api(
+from app.models.loadprofile_analysis import ( # Updated imports
+    AvailableProfileForAnalysis,
+    StatisticalSummary,
+    # ProfileAnalysisResult, # Kept generic one for now, or use specific ones below
+    PeakAnalysisParams, PeakAnalysisResultData,
+    DurationCurveParams, DurationCurveResultData,
+    SeasonalAnalysisParams, SeasonalAnalysisResultData,
+    ComprehensiveAnalysisParams, ComprehensiveAnalysisResultData, # Added
+    ProfileComparisonParams, ProfileComparisonResultData # Added for comparison
+)
+# ... (keep existing imports)
+
+# --- API Endpoints ---
+
+@router.get("/{project_name}/available_profiles",
+            response_model=List[AvailableProfileForAnalysis],
+            summary="List Available Load Profiles for Analysis")
+async def list_profiles_for_analysis_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
-    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
-    analysis_type: str = FastAPIPath(..., description="Type of analysis to perform (e.g., 'peak', 'seasonal')"),
-    params: Optional[Dict[str, Any]] = Body(None, description="Parameters for the analysis"),
     service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
 ):
-    logger.warning(f"Generic analysis endpoint /analyze/{analysis_type} called for {project_name}/{profile_id}. Not fully implemented.")
-    # try:
-    #     # result = await service.perform_single_analysis(project_name, profile_id, analysis_type, params or {})
-    #     # return result
-    # except ResourceNotFoundError as e:
-    #     raise HTTPException(status_code=404, detail=str(e))
-    # except ProcessingError as e: # Or specific validation errors for params
-    #     raise HTTPException(status_code=400, detail=str(e))
-    # except Exception as e:
-    #     logger.exception(f"Error performing '{analysis_type}' analysis for profile '{profile_id}': {e}")
-    #     raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-    raise HTTPException(status_code=501, detail=f"Analysis type '{analysis_type}' not implemented yet.")
+    try:
+        profiles = await service.list_available_profiles_for_analysis(project_name)
+        return profiles
+    except Exception as e:
+        logger.exception(f"Error listing profiles for analysis in project '{project_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list profiles: {str(e)}")
+
+@router.get("/{project_name}/profile/{profile_id}/statistical_summary",
+            response_model=StatisticalSummary,
+            summary="Get Statistical Summary for a Load Profile")
+async def get_statistical_summary_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
+    unit: Optional[str] = Query("kW", description="Unit for the summary results (e.g., kW, MW)"),
+    service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
+):
+    try:
+        summary = await service.get_statistical_summary(project_name, profile_id, unit)
+        return summary
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error getting statistical summary for profile '{profile_id}', project '{project_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get statistical summary: {str(e)}")
+
+@router.post("/{project_name}/profile/{profile_id}/comprehensive_analysis",
+            response_model=ComprehensiveAnalysisResultData,
+            summary="Perform Comprehensive Analysis on a Load Profile")
+async def perform_comprehensive_analysis_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
+    params: ComprehensiveAnalysisParams = Body(...),
+    service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
+):
+    try:
+        result = await service.perform_comprehensive_analysis(project_name, profile_id, params)
+        return result
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error performing comprehensive analysis for profile '{profile_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Comprehensive analysis failed: {str(e)}")
+
+@router.post("/{project_name}/profile/{profile_id}/peak_analysis",
+             response_model=PeakAnalysisResultData,
+             summary="Perform Peak Analysis on a Load Profile")
+async def perform_peak_analysis_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
+    params: PeakAnalysisParams = Body(...),
+    service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
+):
+    try:
+        result = await service.perform_peak_analysis(project_name, profile_id, params)
+        return result
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error performing peak analysis for profile '{profile_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Peak analysis failed: {str(e)}")
+
+@router.post("/{project_name}/profile/{profile_id}/duration_curve",
+             response_model=DurationCurveResultData,
+             summary="Generate Load Duration Curve for a Profile")
+async def generate_duration_curve_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
+    params: DurationCurveParams = Body(...),
+    service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
+):
+    try:
+        result = await service.generate_duration_curve(project_name, profile_id, params)
+        return result
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error generating duration curve for profile '{profile_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Duration curve generation failed: {str(e)}")
+
+@router.post("/{project_name}/profile/{profile_id}/seasonal_analysis",
+             response_model=SeasonalAnalysisResultData,
+             summary="Perform Seasonal Analysis on a Load Profile")
+async def perform_seasonal_analysis_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    profile_id: str = FastAPIPath(..., description="ID of the load profile"),
+    params: SeasonalAnalysisParams = Body(...),
+    service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
+):
+    try:
+        result = await service.perform_seasonal_analysis(project_name, profile_id, params)
+        return result
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error performing seasonal analysis for profile '{profile_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Seasonal analysis failed: {str(e)}")
+
+# The generic /analyze/{analysis_type} endpoint can be removed or kept for future flexibility / less common analyses.
+# For now, removing it in favor of specific endpoints.
+
+@router.post("/{project_name}/compare_profiles",
+            response_model=ProfileComparisonResultData,
+            summary="Compare two Load Profiles")
+async def compare_load_profiles_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    params: ProfileComparisonParams = Body(...), # Contains profile_ids and unit
+    service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
+):
+    try:
+        result = await service.compare_load_profiles(project_name, params)
+        return result
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error comparing load profiles in project '{project_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Profile comparison failed: {str(e)}")
 
 
-logger.info("Load Profile Analysis API router defined for FastAPI.")
+logger.info("Load Profile Analysis API router updated with specific analysis endpoints.")
