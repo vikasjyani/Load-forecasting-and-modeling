@@ -160,10 +160,56 @@ const Admin = () => {
       <Section title="Color Management">
         {loadingStates.colors && <p>Loading color configurations...</p>}
         <AlertMessage message={errorMessages.colors} type="error" />
-        {allColors ? <PreFormatted data={allColors} /> : <p>No color configurations loaded.</p>}
-        <p><em>(UI for editing colors to be implemented here. Currently shows raw JSON.)</em></p>
-        {/* Example: Add button to reset colors */}
-        {/* <Button onClick={async () => { await api.resetColors(); fetchAllColors(); }}>Reset All Colors</Button> */}
+
+        {allColors && (
+          <div>
+            <FormRow label="Select Category to Edit">
+              <Select value={selectedColorCategory} onChange={e => handleColorCategoryChange(e.target.value)}>
+                <option value="">-- Select Category --</option>
+                {Object.keys(allColors).map(cat => <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>)}
+              </Select>
+            </FormRow>
+
+            {selectedColorCategory && editableCategoryColors && (
+              <div style={{marginTop: '15px', borderTop: '1px solid #ccc', paddingTop: '15px'}}>
+                <h4>Editing: <span style={{textTransform: 'capitalize'}}>{selectedColorCategory.replace(/_/g, ' ')}</span></h4>
+                {Object.entries(editableCategoryColors).map(([item, colorValue]) => (
+                  <FormRow key={item} label={item.replace(/_/g, ' ')}>
+                    <Input
+                      type="text"
+                      value={typeof colorValue === 'string' ? colorValue : JSON.stringify(colorValue)} // Handle non-string colors (like themes) for display
+                      onChange={(e) => handleColorItemChange(item, e.target.value)}
+                      style={{width: '150px', marginRight: '10px', fontFamily: 'monospace'}}
+                      disabled={typeof colorValue !== 'string' || !colorValue.startsWith('#')} // Disable if not simple hex
+                    />
+                    <Input
+                      type="color"
+                      value={typeof colorValue === 'string' && colorValue.startsWith('#') ? colorValue : '#ffffff'}
+                      onChange={(e) => handleColorItemChange(item, e.target.value)}
+                      disabled={typeof colorValue !== 'string' || !colorValue.startsWith('#')}
+                      style={{minWidth: '50px', padding: '0px 2px'}}
+                    />
+                     {typeof colorValue !== 'string' && <small>(Complex value, edit via JSON)</small>}
+                  </FormRow>
+                ))}
+                <div style={{marginTop: '20px'}}>
+                  <Button onClick={handleSaveCategoryColors} disabled={loadingStates.colorUpdate} variant="primary" style={{marginRight: '10px'}}>
+                    {loadingStates.colorUpdate ? "Saving..." : `Save ${selectedColorCategory.replace(/_/g, ' ')} Colors`}
+                  </Button>
+                  <Button onClick={() => handleResetColors(selectedColorCategory)} disabled={loadingStates.colorUpdate} variant="secondary">
+                    Reset This Category
+                  </Button>
+                </div>
+                <AlertMessage message={errorMessages.colorUpdate} type="error" />
+              </div>
+            )}
+            <hr style={{margin: '20px 0'}} />
+            <Button onClick={() => handleResetColors()} disabled={loadingStates.colorUpdate} variant="danger">
+                Reset All Colors to Defaults
+            </Button>
+          </div>
+        )}
+        {!allColors && !loadingStates.colors && <p>No color configurations loaded or unable to load.</p>}
       </Section>
 
       <Section title="System Operations">

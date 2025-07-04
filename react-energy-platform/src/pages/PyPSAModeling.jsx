@@ -14,16 +14,35 @@ const Input = (props) => <input {...props} style={{ padding: '10px', border: '1p
 const Select = (props) => <select {...props} style={{ padding: '10px', border: '1px solid #ced4da', borderRadius: '4px', width: '100%', boxSizing: 'border-box', ...props.style }} />;
 const Button = ({ children, onClick, type = "button", disabled = false, variant = "primary", style, title }) => <button title={title} type={type} onClick={onClick} disabled={disabled} style={{ padding: '10px 18px', cursor: disabled ? 'not-allowed' : 'pointer', border: 'none', borderRadius: '5px', fontWeight: 'bold', color: 'white', backgroundColor: disabled ? '#adb5bd' : (variant === 'danger' ? '#dc3545' : (variant === 'secondary' ? '#6c757d' : '#007bff')), opacity: disabled ? 0.7 : 1, minWidth: '100px', ...style }}>{children}</button>;
 const AlertMessage = ({ message, type = "info" }) => { if (!message) return null; const s = {padding: '12px', margin: '15px 0', borderRadius: '5px', border: '1px solid transparent', color: type === 'error' ? '#721c24' : (type === 'success' ? '#155724' : '#0c5460'), backgroundColor: type === 'error' ? '#f8d7da' : (type === 'success' ? '#d4edda' : '#d1ecf1'), borderColor: type === 'error' ? '#f5c6cb' : (type === 'success' ? '#c3e6cb' : '#bee5eb')}; return <div style={s}>{message}</div>;};
+const Table = ({ headers, data, renderRow, caption }) => (
+    <div style={{overflowX: 'auto'}}>
+      <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.9em'}}>
+        {caption && <caption style={{ captionSide: 'top', textAlign: 'left', paddingBottom: '10px', fontWeight: 'bold', color: '#333' }}>{caption}</caption>}
+        <thead>
+          <tr>
+            {headers.map(header => (
+              <th key={header} style={{ border: '1px solid #ddd', padding: '10px 12px', textAlign: 'left', backgroundColor: '#007bff', color: 'white', textTransform: 'capitalize' }}>
+                {header.replace(/_/g, ' ')}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((item, index) => renderRow(item, index))}
+        </tbody>
+      </table>
+    </div>
+  );
 
 const PyPSAModeling = () => {
   const [projectName, setProjectName] = useState("Default_Project");
-  const [availableScenarios, setAvailableScenarios] = useState([]); // Scenario folders
+  const [availableScenarios, setAvailableScenarios] = useState([]);
   const [selectedScenario, setSelectedScenario] = useState('');
-  const [scenarioNetworkFiles, setScenarioNetworkFiles] = useState([]); // .nc files in selected scenario
+  const [scenarioNetworkFiles, setScenarioNetworkFiles] = useState([]);
   const [selectedNetworkFile, setSelectedNetworkFile] = useState('');
   const [networkInfoDetail, setNetworkInfoDetail] = useState(null);
 
-  const [runScenarioName, setRunScenarioName] = useState(''); // For the "Run Simulation" form
+  const [runScenarioName, setRunScenarioName] = useState('');
   const [uiOverrides, setUiOverrides] = useState('{}');
 
   const [jobId, setJobId] = useState(null);
@@ -39,13 +58,25 @@ const PyPSAModeling = () => {
     scenarios: false, networkFiles: false, networkInfo: false,
     run: false, status: false, extraction: false, systemStatus: false
   });
-  const [errorMessages, setErrorMessage] = useState({
+  const [errorMessages, setErrorMessages] = useState({
     scenarios: null, networkFiles: null, networkInfo: null,
-    run: null, status: null, extraction: null, systemStatus: null
+    run: null, status: null, extraction: null, systemStatus: null, general: null
   });
 
   const updateLoading = (key, value) => setLoadingStates(prev => ({ ...prev, [key]: value }));
-  const updateError = (key, value) => setErrorMessage(prev => ({ ...prev, [key]: value }));
+  const updateError = (key, value) => setErrorMessages(prev => ({ ...prev, [key]: value, general: value && key !== 'general' ? prev.general : value }));
+  const clearError = (key) => { updateError(key, null); updateError('general', null); };
+
+  const pypsaExtractionFunctions = [
+    { value: 'dispatch_data_payload_former', label: 'Dispatch Data (Generation, Load, Storage)' },
+    { value: 'carrier_capacity_payload_former', label: 'Installed Capacity (by Carrier & Region)' },
+    { value: 'new_capacity_additions_payload_former', label: 'New Capacity Additions' },
+    { value: 'combined_metrics_extractor_wrapper', label: 'CUF & Curtailment Metrics' },
+    { value: 'extract_api_storage_data_payload_former', label: 'Storage SoC & Stats' },
+    { value: 'emissions_payload_former', label: 'CO2 Emissions' },
+    { value: 'extract_api_prices_data_payload_former', label: 'Marginal Prices & Duration Curve' },
+    { value: 'extract_api_network_flow_payload_former', label: 'Network Losses & Line Loading' },
+  ];
 
   const fetchAvailableScenarios = useCallback(async () => {
     if (!projectName) return;
@@ -56,7 +87,7 @@ const PyPSAModeling = () => {
       if (response.data.networks && response.data.networks.length > 0) {
         const firstScenario = response.data.networks[0].name;
         setSelectedScenario(firstScenario);
-        setRunScenarioName(firstScenario); // Default run scenario
+        setRunScenarioName(firstScenario);
       } else {
         setSelectedScenario('');
         setRunScenarioName('');
@@ -68,17 +99,30 @@ const PyPSAModeling = () => {
     }
   }, [projectName]);
 
+   const fetchPyPSASystemStatus = useCallback(async () => {
+    updateLoading('systemStatus', true); updateError('systemStatus', null);
+    try {
+      const response = await api.getPyPSASystemStatus();
+      setPypsaSystemStatus(response.data);
+    } catch (err) {
+      updateError('systemStatus', err.response?.data?.detail || err.message || 'Failed to fetch PyPSA system status');
+    } finally {
+      updateLoading('systemStatus', false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAvailableScenarios();
-    fetchPyPSASystemStatus(); // Fetch system status on load
-  }, [fetchAvailableScenarios]);
+    fetchPyPSASystemStatus();
+  }, [fetchAvailableScenarios, fetchPyPSASystemStatus]);
 
-  // Fetch network files when a scenario is selected
+
   useEffect(() => {
     if (!selectedScenario || !projectName) {
       setScenarioNetworkFiles([]);
       setSelectedNetworkFile('');
       setNetworkInfoDetail(null);
+      setExtractedPyPSAData(null);
       return;
     }
     const fetchFiles = async () => {
@@ -87,7 +131,7 @@ const PyPSAModeling = () => {
         const response = await api.listPyPSANetworks(projectName, selectedScenario);
         setScenarioNetworkFiles(response.data.networks || []);
         if (response.data.networks && response.data.networks.length > 0) {
-          setSelectedNetworkFile(response.data.networks[0].name); // Auto-select first .nc file
+          setSelectedNetworkFile(response.data.networks[0].name);
         } else {
           setSelectedNetworkFile('');
         }
@@ -100,10 +144,10 @@ const PyPSAModeling = () => {
     fetchFiles();
   }, [projectName, selectedScenario]);
 
-  // Fetch network info when a network file is selected
   useEffect(() => {
     if (!selectedNetworkFile || !selectedScenario || !projectName) {
       setNetworkInfoDetail(null);
+      setExtractedPyPSAData(null);
       return;
     }
     const fetchInfo = async () => {
@@ -120,27 +164,82 @@ const PyPSAModeling = () => {
     fetchInfo();
   }, [projectName, selectedScenario, selectedNetworkFile]);
 
-  // Poll for job status (copied from previous implementation, seems okay)
-  useEffect(() => { /* ... existing job status polling logic ... */ }, [jobId, jobStatus, fetchAvailableScenarios]);
+  useEffect(() => {
+    let intervalId;
+    if (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED') {
+      updateLoading('status', true);
+      intervalId = setInterval(async () => {
+        try {
+          updateError('status', null);
+          const response = await api.getPyPSAJobStatus(jobId);
+          setJobStatus(response.data);
+          setJobLog(response.data.log_summary || []);
+          if (response.data.status === 'COMPLETED' || response.data.status === 'FAILED' || response.data.status === 'CANCELLED') {
+            clearInterval(intervalId);
+            updateLoading('status', false);
+            fetchAvailableScenarios();
+          }
+        } catch (err) {
+          console.error("Error fetching PyPSA job status:", err);
+          const statusErrorMsg = err.response?.data?.detail || err.message || 'Failed to fetch job status.';
+          updateError('status', statusErrorMsg);
+          if (err.response?.status === 404) {
+            clearInterval(intervalId);
+            setJobStatus(prev => ({...prev, status: "NOT_FOUND", error_message: statusErrorMsg}));
+            updateLoading('status', false);
+          }
+        }
+      }, 5000);
+    } else if (jobStatus?.status === 'COMPLETED' || jobStatus?.status === 'FAILED' || jobStatus?.status === 'CANCELLED') {
+        updateLoading('status', false);
+    }
+    return () => clearInterval(intervalId);
+  }, [jobId, jobStatus, fetchAvailableScenarios]);
 
-  const handleRunSimulation = async (e) => { /* ... existing run simulation logic ... */ };
+  const handleRunSimulation = async (e) => {
+    e.preventDefault();
+    if (!runScenarioName) {
+      updateError('run', "Please select or enter a scenario name to run.");
+      return;
+    }
+    updateLoading('run', true);
+    updateError('run', null);
+    setJobId(null);
+    setJobStatus(null);
+    setJobLog([]);
 
-  const fetchPyPSASystemStatus = async () => {
-    updateLoading('systemStatus', true); updateError('systemStatus', null);
+    let parsedOverrides = {};
+    if (uiOverrides.trim()) {
+      try {
+        parsedOverrides = JSON.parse(uiOverrides);
+      } catch (jsonError) {
+        updateError('run', "Invalid JSON in UI Settings Overrides. Please correct it.");
+        updateLoading('run', false);
+        return;
+      }
+    }
+    const payload = {
+      project_name: projectName,
+      scenario_name: runScenarioName,
+      ui_settings_overrides: parsedOverrides,
+    };
     try {
-      const response = await api.getPyPSASystemStatus();
-      setPypsaSystemStatus(response.data);
+      const response = await api.runPyPSAJob(payload);
+      setJobId(response.data.id);
+      setJobStatus(response.data);
+      setJobLog(response.data.log_summary || []);
     } catch (err) {
-      updateError('systemStatus', err.response?.data?.detail || err.message || 'Failed to fetch PyPSA system status');
+      console.error("Error running PyPSA simulation:", err);
+      updateError('run', err.response?.data?.detail || err.message || 'Failed to start PyPSA simulation');
     } finally {
-      updateLoading('systemStatus', false);
+      updateLoading('run', false);
     }
   };
 
   const handleExtractData = async (e) => {
     e.preventDefault();
     if (!selectedScenario || !selectedNetworkFile || !extractionFuncName) {
-      updateError('extraction', "Project, scenario, network file, and extraction function name are required.");
+      updateError('extraction', "Scenario, Network File, and Extraction Function Name are required.");
       return;
     }
     updateLoading('extraction', true); updateError('extraction', null); setExtractedPyPSAData(null);
@@ -155,10 +254,10 @@ const PyPSAModeling = () => {
       }
     }
     const payload = {
-      network_file_name: selectedNetworkFile, // This was the change in model
+      network_file_name: selectedNetworkFile,
       extraction_function_name: extractionFuncName,
       filters: parsedFilters,
-      kwargs: {} // Add if needed
+      kwargs: {}
     };
     try {
       const response = await api.extractPyPSAData(projectName, selectedScenario, selectedNetworkFile, payload);
@@ -170,11 +269,57 @@ const PyPSAModeling = () => {
     }
   };
 
+  const renderExtractedDataTables = (data) => {
+    if (!data || !data.data) return <p>No data to display or data is not in expected format.</p>;
+
+    const dataContent = data.data; // This is the dict returned by pau payload_formers
+
+    return Object.entries(dataContent).map(([key, value]) => {
+        if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
+            const headers = Object.keys(value[0]);
+            return (
+                <div key={key} style={{marginBottom: '15px'}}>
+                    <h4 style={{textTransform: 'capitalize'}}>{key.replace(/_/g, ' ')}</h4>
+                    {renderExtractedDataTable(value, key, headers)}
+                </div>
+            );
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) { // Simple key-value object
+            return (
+                <div key={key} style={{marginBottom: '15px'}}>
+                    <h4 style={{textTransform: 'capitalize'}}>{key.replace(/_/g, ' ')}</h4>
+                    <PreFormatted data={value} />
+                </div>
+            );
+        }
+        // Add rendering for other data types if needed (e.g. simple lists, strings)
+        return null;
+    });
+  };
+
+  const renderExtractedDataTable = (dataArray, keyPrefix, headers) => {
+    return (
+      <Table
+        headers={headers}
+        data={dataArray}
+        renderRow={(row, rowIndex) => (
+          <tr key={`${keyPrefix}-${rowIndex}`} style={{backgroundColor: rowIndex % 2 === 0 ? 'white' : '#f0f8ff'}}>
+            {headers.map(header => (
+              <td key={`${keyPrefix}-${rowIndex}-${header}`} style={{border: '1px solid #ddd', padding: '8px', whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                {typeof row[header] === 'object' ? JSON.stringify(row[header]) : String(row[header])}
+              </td>
+            ))}
+          </tr>
+        )}
+      />
+    );
+  };
+
   return (
     <div style={{fontFamily: 'Arial, sans-serif', color: '#333', padding: '20px'}}>
       <h2 style={{color: '#0056b3', borderBottom: '2px solid #007bff', paddingBottom: '10px', marginBottom: '20px'}}>
         PyPSA Power System Modeling: Project <strong>{projectName}</strong>
       </h2>
+      <AlertMessage message={errorMessages.general} type="error" />
 
       <Section title="PyPSA System Status">
         {loadingStates.systemStatus && <p>Loading system status...</p>}
@@ -188,7 +333,7 @@ const PyPSAModeling = () => {
         <AlertMessage message={errorMessages.scenarios} type="error" />
         {availableScenarios.length > 0 ? (
           <FormRow label="Select Scenario Folder">
-            <Select value={selectedScenario} onChange={e => {setSelectedScenario(e.target.value); setRunScenarioName(e.target.value);setSelectedNetworkFile(''); setNetworkInfoDetail(null);}}>
+            <Select value={selectedScenario} onChange={e => {setSelectedScenario(e.target.value); setRunScenarioName(e.target.value);setSelectedNetworkFile(''); setNetworkInfoDetail(null); setExtractedPyPSAData(null);}}>
               <option value="">-- Select Scenario --</option>
               {availableScenarios.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
             </Select>
@@ -204,9 +349,9 @@ const PyPSAModeling = () => {
           <AlertMessage message={errorMessages.networkFiles} type="error" />
           {scenarioNetworkFiles.length > 0 ? (
             <FormRow label="Select Network File (.nc)">
-              <Select value={selectedNetworkFile} onChange={e => setSelectedNetworkFile(e.target.value)}>
+              <Select value={selectedNetworkFile} onChange={e => {setSelectedNetworkFile(e.target.value); setExtractedPyPSAData(null);}}>
                 <option value="">-- Select Network File --</option>
-                {scenarioNetworkFiles.map(nf => <option key={nf.name} value={nf.name}>{nf.name} ({nf.size_mb?.toFixed(2)}MB, Mod: {new Date(nf.last_modified_iso).toLocaleDateString()})</option>)}
+                {scenarioNetworkFiles.map(nf => <option key={nf.name} value={nf.name}>{nf.name} ({nf.size_mb?.toFixed(2)}MB, Mod: {nf.last_modified_iso ? new Date(nf.last_modified_iso).toLocaleDateString() : 'N/A'})</option>)}
               </Select>
             </FormRow>
           ) : (
@@ -229,7 +374,7 @@ const PyPSAModeling = () => {
             <Input type="text" value={runScenarioName} onChange={e => setRunScenarioName(e.target.value)} placeholder="New or existing scenario name" required />
           </FormRow>
           <FormRow label="UI Settings Overrides (JSON)">
-            <textarea value={uiOverrides} onChange={e => setUiOverrides(e.target.value)} rows={3} placeholder='e.g., {"solving": {"solver_options": {"threads": 4}}}' style={{padding: '8px', border: '1px solid #ced4da', borderRadius: '4px', flexGrow: 1, fontFamily: 'monospace'}}/>
+            <textarea value={uiOverrides} onChange={e => setUiOverrides(e.target.value)} rows={3} placeholder='e.g., {"solving": {"solver_options": {"threads": 4}}}' style={{padding: '8px', border: '1px solid #ced4da', borderRadius: '4px', flexGrow: 1, fontFamily: 'monospace', width: '100%', boxSizing: 'border-box'}}/>
           </FormRow>
           <Button type="submit" disabled={loadingStates.run || (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED')}>
             {loadingStates.run ? 'Starting...' : (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED' ? `Running (${jobStatus?.status})...` : 'Run Simulation')}
@@ -253,13 +398,15 @@ const PyPSAModeling = () => {
       )}
 
       {selectedNetworkFile && (
-        <Section title={`Extract Data from: ${selectedNetworkFile}`}>
+        <Section title={`Extract Data from: ${selectedNetworkFile} (Scenario: ${selectedScenario})`}>
           <form onSubmit={handleExtractData} style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
             <FormRow label="Extraction Function Name">
-              <Input type="text" value={extractionFuncName} onChange={e => setExtractionFuncName(e.target.value)} placeholder="e.g., dispatch_data_payload_former" required />
+              <Select value={extractionFuncName} onChange={e => setExtractionFuncName(e.target.value)}>
+                {pypsaExtractionFunctions.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </Select>
             </FormRow>
             <FormRow label="Filters (JSON string)">
-              <textarea value={extractionFilters} onChange={e => setExtractionFilters(e.target.value)} rows={3} placeholder='e.g., {"resolution": "D"}' style={{padding: '8px', border: '1px solid #ced4da', borderRadius: '4px', flexGrow: 1, fontFamily: 'monospace'}}/>
+              <textarea value={extractionFilters} onChange={e => setExtractionFilters(e.target.value)} rows={3} placeholder='Default: {"resolution": "D"}. E.g., {"resolution": "H", "period": "2025"}' style={{padding: '8px', border: '1px solid #ced4da', borderRadius: '4px', flexGrow: 1, fontFamily: 'monospace', width: '100%', boxSizing: 'border-box'}}/>
             </FormRow>
             <Button type="submit" disabled={loadingStates.extraction}>
               {loadingStates.extraction ? 'Extracting...' : 'Extract Data'}
@@ -267,8 +414,11 @@ const PyPSAModeling = () => {
             <AlertMessage message={errorMessage.extraction} type="error" />
           </form>
           {extractedPyPSAData && (
-            <div>
-              <h4>Extracted Data:</h4>
+            <div style={{marginTop: '20px'}}>
+              <h4 style={{color:'#0056b3'}}>Extracted Data Preview:</h4>
+              <AlertMessage message={extractedPyPSAData.metadata?.error} type="error" />
+              {extractedPyPSAData.data && renderExtractedDataTables(extractedPyPSAData)}
+              <h5 style={{marginTop:'15px'}}>Full Extraction Response:</h5>
               <PreFormatted data={extractedPyPSAData} />
             </div>
           )}

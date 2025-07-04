@@ -336,8 +336,13 @@ const DemandVisualization = () => {
 
           <Section title="Consolidated Results & Analysis">
             <Button onClick={handleGenerateConsolidated}
-              disabled={loadingStates.consolidated || !modelSelectionConfig || Object.keys(modelSelectionConfig).length === 0 || !tdLossesConfig || tdLossesConfig.length === 0}
-              title={(!modelSelectionConfig || Object.keys(modelSelectionConfig).length === 0 || !tdLossesConfig || tdLossesConfig.length === 0) ? "Configure Model Selection and T&D Losses first" : "Generate Consolidated Results"}
+              disabled={loadingStates.consolidated || !modelSelectionConfig || Object.keys(modelSelectionConfig).length === 0 || !tdLossesConfig || tdLossesConfig.length === 0 || !selectedScenarioName}
+              title={
+                !selectedScenarioName ? "Please select a scenario first." :
+                (!modelSelectionConfig || Object.keys(modelSelectionConfig).length === 0) ? "Model Selection must be configured first." :
+                (!tdLossesConfig || tdLossesConfig.length === 0) ? "T&D Losses must be configured first." :
+                "Generate Consolidated Results for the selected scenario"
+              }
             >
               {loadingStates.consolidated ? "Generating..." : "Generate/View Consolidated Results"}
             </Button>
