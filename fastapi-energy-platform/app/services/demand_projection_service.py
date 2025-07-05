@@ -690,10 +690,22 @@ class DemandProjectionService:
                 main_event_loop = asyncio.get_running_loop()
             except RuntimeError:
                 logger.error(f"Job {job_id}: Could not get running event loop. Progress updates might fail.")
-                main_event_loop = None
-
+                main_event_loop = None # Continue, but progress updates from thread might not work as expected
 
             for i, (sec_name, sec_cfg) in enumerate(config.sector_configs.items()):
+                # Check for cancellation before processing each sector
+                current_job_status_obj = await forecast_job_manager.get_job(job_id)
+                if current_job_status_obj and current_job_status_obj.get('status') == JOB_STATUS['CANCELLED']:
+                    logger.info(f"Job {job_id}: Detected cancellation before processing sector '{sec_name}'. Halting forecast execution.")
+                    await forecast_job_manager.update_job(job_id, current_message="Forecast execution halted due to cancellation request.")
+                    # No need to update to CANCELLED again if already marked by cancel_job,
+                    # but ensure final state reflects it if loop breaks here.
+                    # If loop terminates early, the final summary might be incomplete or not generated.
+                    # Consider how to handle this - perhaps a specific "CANCELLED_IN_PROGRESS" state
+                    # or just ensure the final summary reflects partial work.
+                    # For now, just break and let the job remain in CANCELLED state.
+                    break # Exit the sector processing loop
+
                 sector_start_time = time.time()
                 current_sector_message_prefix = f"Processing sector {i+1}/{total_configured_sectors}: '{sec_name}'"
                 await forecast_job_manager.update_job(job_id, current_sector=sec_name, current_message=f"{current_sector_message_prefix} - Starting...")
@@ -710,10 +722,11 @@ class DemandProjectionService:
                 if 'WAM' in selected_models:
                     window_size_val = sec_cfg.get('windowSize', wam_params.get('window_size', 10)) # Check sec_cfg then global
                     try:
-                        model_params_cfg['WAM'] = {'window_size': int(window_size_val)}
+                        # Ensure window_size_val is treated as potentially string from config
+                        model_params_cfg['WAM'] = {'window_size': int(str(window_size_val))}
                     except (ValueError, TypeError):
                         logger.warning(f"Job {job_id}, Sector {sec_name}: Invalid window size '{window_size_val}'. Defaulting to 10.")
-                        model_params_cfg['WAM'] = {'window_size': 10}
+                        model_params_cfg['WAM'] = {'window_size': 10} # Default WAM window size
 
                 # Check if sector data is available
                 if sec_name not in sector_data_map or sector_data_map[sec_name].empty:
@@ -722,7 +735,7 @@ class DemandProjectionService:
                         sector_name=sec_name, status='failed',
                         message="No input data found for this sector or data is empty.",
                         error="Missing or empty sector data sheet.",
-                        processing_time_seconds=time.time() - sector_start_time,
+                        processing_time_seconds=round(time.time() - sector_start_time, 2),
                         configuration_used=sec_cfg
                     )
                     all_sector_results.append(s_result)
@@ -730,12 +743,19 @@ class DemandProjectionService:
                     # Update overall progress immediately
                     current_job_progress = 15 + int(((i + 1) / total_configured_sectors) * 70) # Mark this sector as "done" for progress
                     await forecast_job_manager.update_job(job_id, progress=current_job_progress)
-                    continue
+                    continue # Move to the next sector
 
 
                 def _sector_progress_callback(progress_percent_sector: int, cb_sector_name: str, cb_message: str):
+                    # Before updating progress, check if the job has been cancelled.
+                    # This callback runs in the thread, so direct await is not possible here.
+                    # We can schedule a check or rely on the main loop's check.
+                    # For simplicity here, we'll assume the main loop check is frequent enough.
+                    # If more immediate halting of the ML function itself is needed, Main_forecasting_function
+                    # would need to accept a cancellation event/flag.
+
                     if main_event_loop and not main_event_loop.is_closed():
-                        # Calculate overall progress: 10% for initial setup, 70% for sectors, 15% for finalization
+                        # Calculate overall progress: 15% for initial setup, 70% for sectors, 15% for finalization
                         # This sector's contribution to the 70%
                         overall_progress_for_sector = (progress_percent_sector / 100.0) / total_configured_sectors
                         # Progress from previous sectors + current sector's partial progress
