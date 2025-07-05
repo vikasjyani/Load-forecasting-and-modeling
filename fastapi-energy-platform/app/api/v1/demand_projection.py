@@ -7,61 +7,38 @@ import logging
 from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Body, Query, BackgroundTasks
 from pydantic import BaseModel, Field
-from pathlib import Path # Added for project_path type hint
+import uuid # Added for job ID generation
+from pathlib import Path
 
-# Assuming DemandProjectionService and related classes are adapted and available for DI.
-try:
-    from app.services.demand_projection_service import (
-        DemandProjectionService,
-        ForecastJobConfig, # Data class for job configuration
-        forecast_job_manager # Global instance of ForecastJobManager
-    )
-except ImportError:
-    logging.warning("DemandProjectionService not found, using placeholder for demand projection API.")
-    # Simplified placeholders if actual service is not ready
-    class ForecastJobConfig(BaseModel):
-        scenario_name: str
-        target_year: int
-        exclude_covid_years: bool
-        sector_configs: Dict[str, Any]
-        detailed_configuration: Optional[Dict[str, Any]] = None
-        user_metadata: Optional[Dict[str, Any]] = None
-    class ForecastJobManager:
-        async def create_job(self, config: ForecastJobConfig, **kwargs) -> Dict[str, Any]: return {"id": "mock_job_id", "status": "STARTING"}
-        async def get_job(self, job_id: str) -> Optional[Dict[str, Any]]: return {"id": job_id, "status": "COMPLETED", "progress": 100, "result_summary": {"message": "Mock result"}} if job_id =="mock_job_id" else None
-        async def cancel_job(self, job_id: str) -> bool: return True
-        async def get_jobs_summary(self) -> Dict[str, Any]: return {"total_jobs": 1, "active_jobs": 0}
-    forecast_job_manager = ForecastJobManager()
-    class DemandProjectionService:
-        def __init__(self, project_data_root: Path): self.project_data_root = project_data_root
-        async def get_input_data_summary(self, project_name: str) -> Dict[str, Any]: return {"project_name": project_name, "sectors_available": ["mock_sector"]}
-        async def get_sector_data(self, project_name: str, sector_name: str) -> Dict[str, Any]: return {"sector_name": sector_name, "data_records": [{"Year": 2020, "Electricity": 100}]}
-        async def get_independent_variables(self, project_name: str, sector: str) -> Dict[str, Any]: return {"sector": sector, "variables": ["var1"]}
-        async def get_correlation_data(self, project_name: str, sector: str) -> Dict[str, Any]: return {"sector": sector, "correlations": {"var1": 0.8}}
-        async def get_chart_data(self, project_name: str, sector: str) -> Dict[str, Any]: return {"sector": sector, "chart_type": "line", "data": {}}
-        async def validate_forecast_config(self, project_name: str, config: ForecastJobConfig) -> List[str]: return [] # No errors
-        async def execute_forecast_async(self, project_name: str, config: ForecastJobConfig, job_id: str): pass # Runs in background
-        async def get_scenario_configuration(self, project_name: str, scenario_name: str) -> Optional[Dict[str, Any]]: return {"config": "mock"} if scenario_name == "mock_scenario" else None
+# Actual service imports - remove placeholder block
+from app.services.demand_projection_service import (
+    DemandProjectionService,
+    ForecastJobConfig, # Data class for job configuration from the service
+    forecast_job_manager # Global instance of ForecastJobManager from the service
+)
 
-
-from app.utils.error_handlers import ProcessingError, ResourceNotFoundError, ValidationError as CustomValidationError
+# Custom error handlers and constants
+from app.utils.error_handlers import ProcessingError, ResourceNotFoundError, BusinessLogicError
 from app.utils.constants import FORECAST_MODELS # Assuming this constant is still relevant
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# --- Dependency for DemandProjectionService ---
+# Dependency for DemandProjectionService from app.dependencies
 from app.dependencies import get_demand_projection_service as get_demand_projection_service_dependency
-# The local get_demand_projection_service function is no longer needed.
 
 # --- Pydantic Models for Request/Response ---
-# ForecastJobConfig is already defined in the service, can be reused or a specific API model created.
-# For API input, directly use the service's ForecastJobConfig or a subset.
-class RunForecastPayload(ForecastJobConfig): # Inherit or redefine as needed for API
+# Use ForecastJobConfig from service directly for payload if it matches API needs
+# Or define a specific API payload model if they diverge.
+# For now, assuming RunForecastPayload can be the same as service's ForecastJobConfig
+class RunForecastPayload(ForecastJobConfig):
     pass
 
 class ScenarioNameValidationPayload(BaseModel):
     scenarioName: str = Field(..., min_length=2, max_length=50, pattern=r'^[a-zA-Z0-9_\-\s]+$')
+    # Note: The pattern allows spaces. If spaces are not desired in scenario directory names,
+    # the service layer should handle sanitizing this (e.g. replacing spaces with underscores)
+    # before creating directories. The safe_filename utility could be used.
 
 
 # --- API Endpoints ---
@@ -115,11 +92,29 @@ async def get_correlation_data_api(
         logger.exception(f"Error getting correlation data for {project_name}/{sector_name}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/{project_name}/chart_data/{sector_name}", summary="Get Chart Data for a Sector")
+async def get_chart_data_api(
+    project_name: str,
+    sector_name: str,
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
+):
+    try:
+        # Assuming the service will have a method like get_chart_data
+        # This was present in the Flask blueprint's service call.
+        result = await service.get_chart_data(project_name=project_name, sector=sector_name)
+        if 'error' in result: # Service might return error dict
+             raise ResourceNotFoundError(resource_type="Chart data", resource_id=f"{project_name}/{sector_name}", message=result['error'])
+        return result
+    except ValueError as e: # Raised by service if sector not found
+        raise ResourceNotFoundError(resource_type="Sector for chart data", resource_id=sector_name, message=str(e))
+    except Exception as e:
+        logger.exception(f"Error getting chart data for {project_name}/{sector_name}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{project_name}/run_forecast", status_code=202, summary="Run Demand Forecast for a Project")
 async def run_forecast_api(
     project_name: str,
-    payload: RunForecastPayload, # Uses the ForecastJobConfig structure
+    payload: RunForecastPayload,
     background_tasks: BackgroundTasks,
     service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
@@ -128,77 +123,92 @@ async def run_forecast_api(
     The job runs in the background. Use the returned job_id to track status.
     """
     try:
+        # Validate the configuration using the service method
+        # Ensure the service's ForecastJobConfig matches what `validate_forecast_config` expects
+        # The payload is already an instance of ForecastJobConfig (service version)
         validation_errors = await service.validate_forecast_config(project_name=project_name, config=payload)
         if validation_errors:
-            # Using FastAPI's HTTPException for 422 directly, as Pydantic validation errors are handled by FastAPI.
-            # This is for business logic validation failures.
             raise HTTPException(status_code=422, detail={"message": "Configuration validation failed", "errors": validation_errors})
 
-        # Check for scenario replacement (service might handle this or provide info)
-        # For now, assume overwrite or new scenario.
+        # Check concurrent job limits (if ForecastJobManager implements this check)
+        # Example:
+        # jobs_summary = await forecast_job_manager.get_jobs_summary()
+        # if jobs_summary.get('active_jobs', 0) >= MAX_CONCURRENT_FORECASTS: # Define MAX_CONCURRENT_FORECASTS
+        #     raise HTTPException(status_code=429, detail="Too many active forecast jobs.")
 
-        # Check concurrent job limits (if ForecastJobManager implements this)
-        # current_active_jobs = (await forecast_job_manager.get_jobs_summary()).get('active_jobs', 0)
-        # MAX_CONCURRENT_FORECASTS = 3 # Example limit
-        # if current_active_jobs >= MAX_CONCURRENT_FORECASTS:
-        #     raise HTTPException(status_code=429, detail="Too many active forecast jobs. Please try again later.")
+        job_id = str(uuid.uuid4())
+        # Create job using the global forecast_job_manager from the service module
+        await forecast_job_manager.create_job(config=payload, id=job_id, type="demand_forecast", project_name=project_name)
 
-        job_id = str(uuid.uuid4()) # Generate job ID here or let manager do it
-        job_info = await forecast_job_manager.create_job(config=payload, id=job_id, type="demand_forecast") # Pass explicit id
-
+        # Add the long-running task to background tasks
         background_tasks.add_task(service.execute_forecast_async, project_name, payload, job_id)
 
         logger.info(f"Forecast job {job_id} started for project '{project_name}', scenario '{payload.scenario_name}'.")
         return {
             "message": f"Forecast job started for scenario '{payload.scenario_name}'.",
             "job_id": job_id,
-            "status_url": f"/api/v1/demand_projection/forecast_status/{job_id}", # Example URL
-            "cancel_url": f"/api/v1/demand_projection/cancel_forecast/{job_id}"  # Example URL
+            "status_url": router.url_path_for("get_forecast_status_api", job_id=job_id),
+            "cancel_url": router.url_path_for("cancel_forecast_api", job_id=job_id)
         }
     except HTTPException: # Re-raise HTTPExceptions
         raise
     except Exception as e:
-        logger.exception(f"Error starting forecast for project {project_name}")
+        logger.exception(f"Error starting forecast for project {project_name}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start forecast: {str(e)}")
 
-
 @router.get("/forecast_status/{job_id}", summary="Get Forecast Job Status")
-async def get_forecast_status_api(job_id: str):
+async def get_forecast_status_api(job_id: str): # Add type hint for service if used
+    # Uses the global forecast_job_manager from the service module
     job = await forecast_job_manager.get_job(job_id)
     if not job:
         raise ResourceNotFoundError(resource_type="Forecast Job", resource_id=job_id)
     return job
 
 @router.post("/cancel_forecast/{job_id}", summary="Cancel Forecast Job")
-async def cancel_forecast_api(job_id: str):
+async def cancel_forecast_api(job_id: str): # Add type hint for service if used
+    # Uses the global forecast_job_manager from the service module
+    job = await forecast_job_manager.get_job(job_id) # Check job existence first
+    if not job:
+        raise ResourceNotFoundError(resource_type="Forecast Job", resource_id=job_id)
+
+    if job.get('status') not in [JOB_STATUS['RUNNING'], JOB_STATUS['STARTING']]:
+         raise BusinessLogicError(message=f"Cannot cancel job {job_id}. Status: {job.get('status')}.")
+
     success = await forecast_job_manager.cancel_job(job_id)
-    if not success:
-        # Could be job not found or job already completed/cancelled
-        job = await forecast_job_manager.get_job(job_id)
-        if not job:
-            raise ResourceNotFoundError(resource_type="Forecast Job", resource_id=job_id)
-        raise BusinessLogicError(message=f"Cannot cancel job {job_id} with status {job.get('status')}.")
+    if not success: # Should not happen if status check passed, but good for robustness
+        # This might indicate an issue with the job manager's internal state
+        raise HTTPException(status_code=500, detail=f"Failed to request cancellation for job {job_id}.")
     return {"message": f"Forecast job '{job_id}' cancellation requested."}
 
+
 @router.get("/jobs/summary", summary="Get Summary of All Forecast Jobs")
-async def get_jobs_summary_api():
+async def get_jobs_summary_api(): # Add type hint for service if used
+    # Uses the global forecast_job_manager from the service module
     summary = await forecast_job_manager.get_jobs_summary()
     return summary
 
 @router.post("/{project_name}/validate_scenario_name", summary="Validate Scenario Name for a Project")
-async def validate_scenario_name_api(project_name: str, payload: ScenarioNameValidationPayload):
-    # In FastAPI, basic validation (length, pattern) is handled by Pydantic model.
-    # This endpoint might check for existing scenarios with the same name.
-    scenario_name = payload.scenarioName # Access validated field
-    # Placeholder: check if scenario_name already exists for project_name
-    # scenario_path = service._get_project_input_file_path(project_name).parent.parent / "results" / "demand_projection" / scenario_name
-    # exists = scenario_path.exists()
-    exists = False # Mock
+async def validate_scenario_name_api(
+    project_name: str,
+    payload: ScenarioNameValidationPayload,
+    service: DemandProjectionService = Depends(get_demand_projection_service_dependency) # Service needed for checking existence
+):
+    scenario_name = payload.scenarioName
+    # This should ideally call a service method to check for scenario existence
+    # For now, assuming a simplified check or that service method will be added.
+    # exists = await service.check_scenario_exists(project_name, scenario_name) # Example
+
+    # Placeholder logic for existence check (should be in service)
+    from app.config import settings as global_settings # Temporary direct import
+    scenario_results_path = global_settings.PROJECT_DATA_ROOT / project_name / "results" / "demand_projection" / scenario_name
+    exists = await asyncio.to_thread(scenario_results_path.exists)
+
+
     return {
         "scenario_name": scenario_name,
-        "is_valid": True, # Pydantic handled basic validation
+        "is_valid": True, # Pydantic handled basic validation of format
         "already_exists": exists,
-        "message": f"Scenario name '{scenario_name}' is valid. {'It will overwrite an existing scenario.' if exists else 'It is available.'}"
+        "message": f"Scenario name '{scenario_name}' format is valid. {'It will overwrite an existing scenario.' if exists else 'It is available.'}"
     }
 
 @router.get("/{project_name}/configuration/{scenario_name}", summary="Get Saved Scenario Configuration")
@@ -208,30 +218,38 @@ async def get_scenario_configuration_api(
     service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     try:
+        # Assuming service has get_scenario_configuration method
         config_data = await service.get_scenario_configuration(project_name=project_name, scenario_name=scenario_name)
-        if config_data is None:
+        if config_data is None: # Service should return None if not found
             raise ResourceNotFoundError(resource_type="Scenario Configuration", resource_id=f"{project_name}/{scenario_name}")
         return config_data
-    except ResourceNotFoundError as e:
-        raise e
+    except ResourceNotFoundError: # Re-raise specific not found errors
+        raise
+    except ValueError as ve: # Catch other specific errors from service
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        logger.exception(f"Error getting config for {project_name}/{scenario_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error getting configuration for project '{project_name}', scenario '{scenario_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve scenario configuration: {str(e)}")
+
 
 @router.post("/{project_name}/validate_configuration", summary="Validate Forecast Configuration")
 async def validate_configuration_api(
     project_name: str,
-    payload: RunForecastPayload, # Reusing the run forecast payload for validation
+    payload: RunForecastPayload,
     service: DemandProjectionService = Depends(get_demand_projection_service_dependency)
 ):
     """Validates a complete forecast configuration without starting the job."""
     try:
+        # Ensure the service's ForecastJobConfig matches what `validate_forecast_config` expects
         validation_errors = await service.validate_forecast_config(project_name=project_name, config=payload)
         if validation_errors:
-            return {"is_valid": False, "errors": validation_errors, "message": "Configuration has validation errors."}
+            # Return 422 for validation errors
+            return HTTPException(status_code=422, detail={"message": "Configuration has validation errors.", "errors": validation_errors})
         return {"is_valid": True, "message": "Configuration is valid."}
+    except ValueError as ve: # Catch specific errors from service like file not found for project
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        logger.exception(f"Error validating configuration for project {project_name}")
+        logger.exception(f"Error validating configuration for project {project_name}: {e}")
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 
