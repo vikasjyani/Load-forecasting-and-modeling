@@ -50,47 +50,25 @@ async def get_statistical_summary_api(
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ProcessingError as e:
-        raise HTTPException(status_code=400, detail=str(e)) # Or 500 if it's a server-side processing issue
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"Error getting statistical summary for profile '{profile_id}', project '{project_name}': {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get statistical summary: {str(e)}")
 
+# Pydantic models for specific analysis types are now imported at the top.
+# No need for the duplicated import block here.
 
-from app.models.loadprofile_analysis import ( # Updated imports
-    AvailableProfileForAnalysis,
-    StatisticalSummary,
-    # ProfileAnalysisResult, # Kept generic one for now, or use specific ones below
-    PeakAnalysisParams, PeakAnalysisResultData,
-    DurationCurveParams, DurationCurveResultData,
-    SeasonalAnalysisParams, SeasonalAnalysisResultData,
-    ComprehensiveAnalysisParams, ComprehensiveAnalysisResultData, # Added
-    ProfileComparisonParams, ProfileComparisonResultData # Added for comparison
-)
-# ... (keep existing imports)
+# --- API Endpoints --- (This comment can be removed or kept if it helps structure)
+# list_profiles_for_analysis_api and get_statistical_summary_api are already defined above.
+# The specific analysis endpoints will follow.
 
-# --- API Endpoints ---
-
-@router.get("/{project_name}/available_profiles",
-            response_model=List[AvailableProfileForAnalysis],
-            summary="List Available Load Profiles for Analysis")
-async def list_profiles_for_analysis_api(
-    project_name: str = FastAPIPath(..., description="The name of the project"),
-    service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
-):
-    try:
-        profiles = await service.list_available_profiles_for_analysis(project_name)
-        return profiles
-    except Exception as e:
-        logger.exception(f"Error listing profiles for analysis in project '{project_name}': {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list profiles: {str(e)}")
-
-@router.get("/{project_name}/profile/{profile_id}/statistical_summary",
-            response_model=StatisticalSummary,
-            summary="Get Statistical Summary for a Load Profile")
-async def get_statistical_summary_api(
+@router.post("/{project_name}/profile/{profile_id}/comprehensive_analysis",
+            response_model=ComprehensiveAnalysisResultData,
+            summary="Perform Comprehensive Analysis on a Load Profile")
+async def perform_comprehensive_analysis_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     profile_id: str = FastAPIPath(..., description="ID of the load profile"),
-    unit: Optional[str] = Query("kW", description="Unit for the summary results (e.g., kW, MW)"),
+    params: ComprehensiveAnalysisParams = Body(...),
     service: LoadProfileAnalysisService = Depends(get_load_profile_analysis_service)
 ):
     try:
