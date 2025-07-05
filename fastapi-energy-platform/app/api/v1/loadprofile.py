@@ -10,34 +10,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pathlib import Path
 import tempfile # For creating temporary files for downloads
+import asyncio # For asyncio.to_thread if direct os calls were needed here (but they are in service)
 
-# Assuming LoadProfileService is adapted and available for DI.
-try:
-    from app.services.loadprofile_service import LoadProfileService
-except ImportError:
-    logging.warning("LoadProfileService not found, using placeholder for load profile API.")
-    # Simplified placeholder
-    class LoadProfileService:
-        def __init__(self, project_data_root: Path): self.project_data_root = project_data_root
-        async def get_main_page_data(self, project_name: str) -> Dict[str, Any]: return {"project_name": project_name, "template_info": {"exists": True}}
-        async def get_template_analysis(self, project_name: str) -> Dict[str, Any]: return {"analysis": "mock_template_analysis"}
-        async def get_available_base_years(self, project_name: str) -> Dict[str, Any]: return {"years": [2020, 2021]}
-        async def get_scenario_analysis(self, project_name: str, scenario_name: str) -> Dict[str, Any]: return {"scenario": scenario_name, "analysis": "mock"}
-        async def generate_profile(self, project_name: str, generation_type: str, config: Dict[str, Any]) -> Dict[str, Any]: return {"success": True, "profile_id": "new_mock_profile"}
-        async def get_saved_profiles_with_metadata(self, project_name: str) -> Dict[str, Any]: return {"profiles": [{"profile_id": "mock_profile"}], "total_count": 1}
-        async def get_profile_detailed_data(self, project_name: str, profile_id: str) -> Dict[str, Any]:
-            if profile_id == "mock_profile": return {"profile_id": profile_id, "data_records": [{"value": 100}]}
-            raise ResourceNotFoundError(resource_type="Profile", resource_id=profile_id)
-        async def delete_profile(self, project_name: str, profile_id: str) -> Dict[str, Any]: return {"success": True}
-        async def upload_template_file(self, project_name: str, file: UploadFile) -> Dict[str, Any]: return {"success": True, "filename": file.filename}
-        # async def analyze_profile(self, project_name: str, profile_id: str) -> Dict[str, Any]: return {"analysis": "mock"} # This might belong to analysis service
-        # async def compare_profiles(self, project_name: str, profile_ids: List[str]) -> Dict[str, Any]: return {"comparison": "mock"}
-        async def get_profile_file_path(self, project_name: str, profile_id: str) -> Optional[Path]: # For downloads
-             mock_path = self.project_data_root / project_name / "results" / "load_profiles" / f"{profile_id}.csv"
-             mock_path.parent.mkdir(parents=True, exist_ok=True)
-             mock_path.touch(exist_ok=True)
-             return mock_path
-
+# Actual service import
+from app.services.loadprofile_service import LoadProfileService
 
 from app.utils.error_handlers import ProcessingError, ResourceNotFoundError, ValidationError as CustomValidationError
 from app.utils.constants import ALLOWED_EXTENSIONS, MAX_FILE_SIZE # Assuming these are relevant
@@ -47,7 +23,6 @@ router = APIRouter()
 
 # --- Dependency for LoadProfileService ---
 from app.dependencies import get_load_profile_service as get_load_profile_service_dependency
-# The local get_load_profile_service function is no longer needed.
 
 # --- Pydantic Models ---
 class BaseProfileGenerationPayload(BaseModel):
@@ -115,7 +90,7 @@ async def generate_base_profile_api(
 async def generate_stl_profile_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     payload: StlProfileGenerationPayload,
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     try:
         if payload.demand_source == "scenario" and not payload.scenario_name:
@@ -136,7 +111,7 @@ async def generate_stl_profile_api(
 @router.get("/{project_name}/saved_profiles", summary="List Saved Load Profiles")
 async def get_saved_profiles_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     try:
         profiles_data = await service.get_saved_profiles_with_metadata(project_name=project_name)
@@ -149,7 +124,7 @@ async def get_saved_profiles_api(
 async def get_profile_data_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     profile_id: str = FastAPIPath(..., description="ID of the saved load profile"),
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     try:
         profile_data = await service.get_profile_detailed_data(project_name, profile_id)
@@ -164,10 +139,10 @@ async def get_profile_data_api(
 async def download_profile_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     profile_id: str = FastAPIPath(..., description="ID of the saved load profile"),
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     try:
-        file_path = await service.get_profile_file_path(project_name, profile_id) # Service should return Path object
+        file_path = await service.get_profile_file_path(project_name, profile_id) # Service returns Path object
         if not file_path or not file_path.exists():
             raise ResourceNotFoundError(resource_type="Profile CSV", resource_id=profile_id)
 
@@ -182,7 +157,7 @@ async def download_profile_api(
 async def delete_profile_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     profile_id: str = FastAPIPath(..., description="ID of the load profile to delete"),
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     try:
         result = await service.delete_profile(project_name, profile_id)
@@ -197,7 +172,7 @@ async def delete_profile_api(
 async def upload_template_api(
     project_name: str = FastAPIPath(..., description="The name of the project"),
     file: UploadFile = File(...),
-    service: LoadProfileService = Depends(get_load_profile_service)
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
 ):
     # Basic validation for filename and extension
     if not file.filename:
@@ -381,6 +356,40 @@ async def compare_profiles_api(
     # return result
     raise HTTPException(status_code=501, detail="Compare profiles endpoint not fully implemented in service yet.")
 
+@router.get("/{project_name}/historical_summary", summary="Get Historical Data Summary")
+async def get_historical_summary_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        summary = await service.get_historical_data_summary(project_name)
+        return summary
+    except ResourceNotFoundError as e: # If template not found
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProcessingError as e: # Other processing errors
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error getting historical summary for project {project_name}: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while fetching historical summary.")
 
-logger.info("Load Profile API router defined for FastAPI with new endpoints.")
-print("Load Profile API router defined for FastAPI with new endpoints.")
+@router.get("/{project_name}/base_year_info/{year}", summary="Get Detailed Info for a Base Year")
+async def get_base_year_info_api(
+    project_name: str = FastAPIPath(..., description="The name of the project"),
+    year: int = FastAPIPath(..., description="The base year to get information for", ge=2000, le=2050),
+    service: LoadProfileService = Depends(get_load_profile_service_dependency)
+):
+    try:
+        info = await service.get_base_year_detailed_info(project_name, year)
+        return info
+    except ResourceNotFoundError as e: # If template or year data not found
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e: # If year is invalid for other reasons (e.g. not in data though template exists)
+        raise HTTPException(status_code=404, detail=str(e)) # Or 422 if it's a validation issue
+    except ProcessingError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error getting base year info for project {project_name}, year {year}: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while fetching base year information.")
+
+logger.info("Load Profile API router defined for FastAPI with new endpoints and service integration.")
+print("Load Profile API router defined for FastAPI with new endpoints and service integration.")

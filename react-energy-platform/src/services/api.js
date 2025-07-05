@@ -63,7 +63,8 @@ const generateBaseProfile = (projectName, payload) => apiClient.post(`/loadprofi
 const generateStlProfile = (projectName, payload) => apiClient.post(`/loadprofile/${encodeURIComponent(projectName)}/generate_stl_profile`, payload);
 const listSavedLoadProfiles = (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles`);
 const getLoadProfileData = (projectName, profileId) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`);
-const deleteLoadProfile = (projectName, profileId) => apiClient.delete(`/loadprofile/${encodeURIComponent(projectName)}/profiles/${encodeURIComponent(profileId)}`);
+// Corrected path for deleteLoadProfile to match FastAPI router: /{project_name}/delete_profile/{profile_id}
+const deleteLoadProfile = (projectName, profileId) => apiClient.delete(`/loadprofile/${encodeURIComponent(projectName)}/delete_profile/${encodeURIComponent(profileId)}`);
 const uploadLoadProfileTemplate = (projectName, file) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -201,6 +202,33 @@ export default {
   uploadLoadProfileTemplate,
   // analyzeLoadProfile, // Moved to Load Profile Analysis section
   // compareLoadProfiles, // Moved to Load Profile Analysis section (or keep if distinct from DV compare)
+
+  // Newly added client functions for Load Profile
+  getHistoricalSummary: (projectName) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/historical_summary`),
+  getBaseYearInfo: (projectName, year) => apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/base_year_info/${encodeURIComponent(year)}`),
+  downloadLoadProfile: async (projectName, profileId) => {
+    const response = await apiClient.get(`/loadprofile/${encodeURIComponent(projectName)}/download_profile/${encodeURIComponent(profileId)}`, {
+      responseType: 'blob', // Important for file downloads
+    });
+    // Create a link and trigger download
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    // Try to get filename from content-disposition header, fallback to profile_id.csv
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `${profileId}.csv`;
+    if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch && filenameMatch.length === 2)
+            filename = filenameMatch[1];
+    }
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return { success: true, filename: filename };
+  },
 
   runPyPSAJob,
   getPyPSAJobStatus,

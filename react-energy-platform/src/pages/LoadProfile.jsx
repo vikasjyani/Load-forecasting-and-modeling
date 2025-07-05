@@ -320,23 +320,35 @@ const LoadProfile = () => {
       </h2>
 
       <Section title="Load Curve Template">
-        {loadingStates.templateInfo ? <p>Loading template info...</p> : <PreFormatted data={templateInfo} />}
+        {loadingStates.templateInfo ? <p>Loading template info...</p> : templateInfo && templateInfo.file_exists ? <PreFormatted data={templateInfo} /> : <p style={{color: 'orange'}}>Template file 'load_curve_template.xlsx' not found or not yet loaded. Please upload one.</p>}
         <AlertMessage message={errorMessages.templateInfo} type="error" />
         <div style={{marginTop: '10px'}}>
-            <Input type="file" onChange={handleFileUpload} accept=".xlsx" disabled={loadingStates.templateUpload} />
+            <Input type="file" onChange={handleFileUpload} accept=".xlsx" disabled={loadingStates.templateUpload || loadingStates.templateInfo} />
         </div>
-        {loadingStates.templateUpload && <p>{uploadStatusMessage}</p>}
+        {loadingStates.templateUpload && <p>Uploading...</p>}
         <AlertMessage message={uploadStatusMessage} type={errorMessages.templateUpload ? "error" : "success"} />
       </Section>
 
-      <Section title="Available Base Years">
+      <Section title="Available Base Years (from Template)">
         {loadingStates.baseYears ? <p>Loading base years...</p> :
           (availableBaseYears.length > 0 ?
             <ul style={{listStyleType: 'circle', paddingLeft: '20px'}}>{availableBaseYears.map(year => <li key={year}>{year}</li>)}</ul> :
-            <p>No base years available. This might be due to a missing or invalid template.</p>)
+            <p>No base years available. This might be due to a missing or invalid template, or the template has no processable historical data.</p>)
         }
         <AlertMessage message={errorMessages.baseYears} type="error" />
       </Section>
+
+      <Section title="Available Demand Scenarios (from Demand Projection)">
+        {mainData?.available_scenarios?.length > 0 ? (
+            <Select value={scenarioName} onChange={e => setScenarioName(e.target.value)} disabled={demandSource !== 'scenario'}>
+                <option value="">Select a Demand Scenario</option>
+                {mainData.available_scenarios.map(sc => (
+                    <option key={sc.name} value={sc.name}>{sc.name} (Last Modified: {new Date(sc.file_info?.modified_iso).toLocaleDateString()})</option>
+                ))}
+            </Select>
+        ) : <p>No demand scenarios found. Please generate demand projections first.</p>}
+      </Section>
+
 
       <Section title="Generate New Load Profile">
         <form onSubmit={handleGenerateProfile} style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
@@ -347,8 +359,11 @@ const LoadProfile = () => {
             </Select>
           </FormRow>
           {generationType === 'base_profile' && (
-            <FormRow label="Base Year">
-              <Input type="number" value={baseYear} onChange={e => setBaseYear(e.target.value)} placeholder="e.g., 2022" required={generationType === 'base_profile'} />
+            <FormRow label="Base Year (from Template)">
+              <Select value={baseYear} onChange={e => setBaseYear(e.target.value)} required={generationType === 'base_profile'}>
+                <option value="">Select Base Year</option>
+                {availableBaseYears.map(year => <option key={year} value={year}>{year}</option>)}
+              </Select>
             </FormRow>
           )}
           <FormRow label="Start Financial Year">
@@ -359,22 +374,38 @@ const LoadProfile = () => {
           </FormRow>
           <FormRow label="Demand Source">
             <Select value={demandSource} onChange={e => setDemandSource(e.target.value)}>
-              <option value="template">From Template</option>
-              <option value="scenario">From Demand Scenario</option>
+              <option value="template">From Template Total Demand</option>
+              <option value="scenario">From Demand Projection Scenario</option>
             </Select>
           </FormRow>
           {demandSource === 'scenario' && (
             <FormRow label="Scenario Name">
-              <Input type="text" value={scenarioName} onChange={e => setScenarioName(e.target.value)} placeholder="Enter demand projection scenario name" required={demandSource === 'scenario'} />
+              <Select value={scenarioName} onChange={e => setScenarioName(e.target.value)} required={demandSource === 'scenario'}>
+                 <option value="">Select a Scenario</option>
+                 {mainData?.available_scenarios?.map(sc => (
+                    <option key={sc.name} value={sc.name}>{sc.name}</option>
+                 ))}
+              </Select>
             </FormRow>
           )}
-           <FormRow label="Custom Profile Name (Optional)">
-            <Input type="text" value={customProfileName} onChange={e => setCustomProfileName(e.target.value)} placeholder="e.g., MySummerProfile" />
+          <FormRow label="Output Profile Frequency">
+             <Select value={customProfileName.frequency /* Assuming frequency is part of a config object */} onChange={e => setCustomProfileName(prev => ({...prev, frequency: e.target.value}))}>
+                <option value="hourly">Hourly</option>
+                <option value="15min">15-minute</option>
+                <option value="30min">30-minute</option>
+                {/* <option value="daily">Daily</option> */} {/* Daily might need different logic */}
+             </Select>
           </FormRow>
+           <FormRow label="Custom Profile Name (Optional)">
+            <Input type="text" value={customProfileName.name || ''} onChange={e => setCustomProfileName(prev => ({...prev, name: e.target.value}))} placeholder="e.g., MySummerProfile_HighGrowth" />
+          </FormRow>
+          {/* TODO: Add inputs for STL params, constraints, LF improvement if stl_profile selected */}
+
           <div style={{marginTop: '10px'}}>
-            <Button type="submit" disabled={loadingStates.generation}>
+            <Button type="submit" disabled={loadingStates.generation || !templateInfo?.file_exists}>
               {loadingStates.generation ? 'Generating...' : 'Generate Profile'}
             </Button>
+            {!templateInfo?.file_exists && <span style={{color: 'red', marginLeft: '10px'}}>Template must be uploaded first.</span>}
           </div>
           <AlertMessage message={generationMessage.text} type={generationMessage.type} />
         </form>
@@ -384,19 +415,19 @@ const LoadProfile = () => {
         {loadingStates.mainData ? <p>Loading profiles...</p> : (
           mainData && mainData.saved_profiles && mainData.saved_profiles.length > 0 ? (
             <Table
-              headers={['ID', 'Method', 'Created At', 'Years', 'Frequency', 'File Info', 'Actions']}
+              headers={['ID', 'Method', 'Created At', 'Years', 'Frequency', 'File Size (MB)', 'Actions']}
               data={mainData.saved_profiles}
               renderRow={(profile, index) => (
                 <tr key={profile.profile_id || index} style={{backgroundColor: index % 2 === 0 ? 'white' : '#f0f8ff'}}>
                   <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.profile_id}</td>
-                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.method_used || profile.method}</td>
-                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.created_at ? new Date(profile.created_at).toLocaleString() : 'N/A'}</td>
-                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{(profile.years_generated || profile.years)?.join(', ')}</td>
-                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.frequency}</td>
-                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}><PreFormatted data={profile.file_info} style={{fontSize: '0.8em', padding: '8px'}}/></td>
-                  <td style={{border: '1px solid #ddd', padding: '10px 12px', minWidth: '200px'}}>
+                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.method_used || profile.metadata?.method_used}</td>
+                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.created_at ? new Date(profile.created_at).toLocaleString() : (profile.metadata?.created_at ? new Date(profile.metadata.created_at).toLocaleString() : 'N/A')}</td>
+                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{(profile.years_generated || profile.metadata?.years_generated)?.join(', ')}</td>
+                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.frequency || profile.metadata?.frequency}</td>
+                  <td style={{border: '1px solid #ddd', padding: '10px 12px'}}>{profile.file_info?.size_mb !== undefined ? `${profile.file_info.size_mb} MB` : 'N/A'}</td>
+                  <td style={{border: '1px solid #ddd', padding: '10px 12px', minWidth: '250px'}}>
                     <Button onClick={() => handleViewProfile(profile.profile_id)} style={{marginRight: '8px', marginBottom: '5px'}}>View Data</Button>
-                    {/* <Button onClick={() => alert('Download: ' + profile.profile_id)} style={{marginRight: '8px', marginBottom: '5px'}}>Download</Button> */}
+                    <Button onClick={() => handleDownloadProfile(profile.profile_id)} style={{marginRight: '8px', marginBottom: '5px'}}>Download</Button>
                     <Button onClick={() => handleDeleteProfile(profile.profile_id)} variant="danger">Delete</Button>
                   </td>
                 </tr>
@@ -408,7 +439,7 @@ const LoadProfile = () => {
       </Section>
 
       {selectedProfileData && (
-        <Section title={`Data for Profile: ${selectedProfileData.metadata?.profile_id}`}>
+        <Section title={`Data for Profile: ${selectedProfileData.metadata?.profile_id || selectedProfileData.profile_id}`}>
           {loadingStates.profileDetails ? <p>Loading details...</p> : <PreFormatted data={selectedProfileData} />}
           <AlertMessage message={errorMessages.profileDetails} type="error" />
         </Section>
