@@ -108,7 +108,8 @@ async def create_project_structure(project_path: Union[Path, str], template_root
     project_path = Path(project_path)
     logger.info(f"Attempting to create project structure at: {project_path}")
 
-    if not ensure_directory(project_path): # ensure_directory is sync again
+    # Use asyncio.to_thread for ensure_directory
+    if not await asyncio.to_thread(ensure_directory, project_path):
         return {
             'success': False, 'message': f'Failed to create main project directory: {project_path}',
             'created_folders': [], 'copied_templates': [], 'metadata_path': '', 'error': 'Directory creation failed.'
@@ -117,12 +118,12 @@ async def create_project_structure(project_path: Union[Path, str], template_root
     created_folders: List[str] = []
     for folder_name, subfolders_dict in PROJECT_STRUCTURE.items(): # PROJECT_STRUCTURE from constants
         folder_path = project_path / folder_name
-        if ensure_directory(folder_path): # ensure_directory is sync again
+        if await asyncio.to_thread(ensure_directory, folder_path): # Use asyncio.to_thread
             created_folders.append(folder_name)
             if isinstance(subfolders_dict, dict): # If subfolders are defined
                 for subfolder_name in subfolders_dict.keys():
                     subfolder_path = folder_path / subfolder_name
-                    if ensure_directory(subfolder_path): # ensure_directory is sync again
+                    if await asyncio.to_thread(ensure_directory, subfolder_path): # Use asyncio.to_thread
                         created_folders.append(f"{folder_name}/{subfolder_name}")
 
     copied_templates: List[str] = []
@@ -134,7 +135,7 @@ async def create_project_structure(project_path: Union[Path, str], template_root
 
         if template_root_exists and template_root_is_dir:
             inputs_folder = project_path / 'inputs' # Standard inputs folder
-            ensure_directory(inputs_folder) # ensure_directory is sync again
+            await asyncio.to_thread(ensure_directory, inputs_folder) # Use asyncio.to_thread
 
             for template_source_filename, template_dest_filename in TEMPLATE_FILES.items(): # TEMPLATE_FILES from constants
                 source_path = template_root_path / template_source_filename
@@ -166,7 +167,7 @@ async def create_project_structure(project_path: Union[Path, str], template_root
     }
 
     metadata_dir = project_path / 'config' # Standard config folder
-    await ensure_directory(metadata_dir) # Added await
+    await asyncio.to_thread(ensure_directory, metadata_dir) # Corrected: Use asyncio.to_thread for ensure_directory
     metadata_file_path = metadata_dir / 'project_metadata.json'
 
     try:
@@ -315,7 +316,8 @@ async def copy_missing_templates(project_path: Union[Path, str], missing_templat
         return {'success': False, 'copied': [], 'failed': missing_templates, 'message': 'Template source directory not found or is not a directory.'}
 
     inputs_folder = project_path / 'inputs'
-    if not ensure_directory(inputs_folder): # ensure_directory is sync again
+    # Use asyncio.to_thread for ensure_directory
+    if not await asyncio.to_thread(ensure_directory, inputs_folder):
         return {'success': False, 'copied': [], 'failed': missing_templates, 'message': f'Failed to ensure inputs directory exists at {inputs_folder}.'}
 
     copied_list, failed_list = [], []
