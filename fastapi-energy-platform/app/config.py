@@ -1,8 +1,21 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
-from typing import List, Optional
+from typing import List, Optional, Any
 from pathlib import Path
 import os
+
+# Define paths at module level to avoid issues with `Settings()` recursion in default_factory
+_CONFIG_FILE_PATH = Path(__file__).resolve()
+_APP_DIR_PATH = _CONFIG_FILE_PATH.parent  # .../app
+_PROJECT_DIR_PATH = _APP_DIR_PATH.parent    # .../fastapi-energy-platform (assuming this is the project root)
+_PROJECT_PARENT_DIR_PATH = _PROJECT_DIR_PATH.parent # Directory containing the project directory
+
+# Default paths based on the new structure
+DEFAULT_PROJECT_DATA_ROOT: Path = _PROJECT_PARENT_DIR_PATH / "data" / "projects"
+DEFAULT_LOGS_DIR: Path = _PROJECT_DIR_PATH / "logs" # e.g., fastapi-energy-platform/logs
+DEFAULT_TEMP_UPLOAD_DIR: Path = _PROJECT_DIR_PATH / "temp_uploads" # e.g., fastapi-energy-platform/temp_uploads
+DEFAULT_GLOBAL_FEATURES_CONFIG: Path = _APP_DIR_PATH / "data" / "admin" / "features_config.json" # e.g., fastapi-energy-platform/app/data/admin/features_config.json
+
 
 class Settings(BaseSettings):
     """
@@ -16,12 +29,11 @@ class Settings(BaseSettings):
     # Logging configuration
     LOG_LEVEL: str = Field("INFO", description="Logging level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL).")
 
-    # File storage paths
-    # Default to a 'data' directory in the repository root if not set via environment variable.
-    # For production, this should be an absolute path set via an environment variable.
-    PROJECT_DATA_ROOT_DEFAULT: Path = Path(__file__).resolve().parent.parent.parent / "data" / "projects"
+    # Application root directory, useful for deriving other paths
+    APP_ROOT: Path = _APP_DIR_PATH # Expose _APP_DIR_PATH as settings.APP_ROOT
+
     PROJECT_DATA_ROOT: Path = Field(
-        default_factory=lambda: Settings.PROJECT_DATA_ROOT_DEFAULT,
+        default_factory=lambda: DEFAULT_PROJECT_DATA_ROOT,
         description="The root directory for storing all project-related data and files. "
                     "It's highly recommended to set this via an environment variable for production deployments."
     )
@@ -31,19 +43,11 @@ class Settings(BaseSettings):
 
     # PyPSA Specific Settings
     PYPSA_NETWORK_CACHE_SIZE: int = Field(default=3, ge=1, le=10, description="Maximum number of PyPSA networks to keep in in-memory cache.")
-    GLOBAL_FEATURES_CONFIG_PATH: Path = Field(
-        default_factory=lambda: Path(Settings().BASE_DIR.parent / "app_config_data" / "features.json"), # Access BASE_DIR via self or Settings()
-        description="Path to the global features.json configuration file."
-    )
-    LOGS_DIR: Path = Field(
-        default_factory=lambda: Path(Settings().PROJECT_DATA_ROOT.parent / "app_logs"), # Example: one level above project_data_root
-        description="Directory to store application logs."
-    )
-    TEMP_UPLOAD_DIR: Path = Field(
-        default_factory=lambda: Path(Settings().PROJECT_DATA_ROOT.parent / "temp_uploads"),
-        description="Directory for temporary file uploads."
-    )
 
+    # Paths that AdminService and other services might use, derived from module-level constants
+    GLOBAL_FEATURES_CONFIG_PATH: Path = Field(default_factory=lambda: DEFAULT_GLOBAL_FEATURES_CONFIG)
+    LOG_DIR: Path = Field(default_factory=lambda: DEFAULT_LOGS_DIR) # Renamed from LOGS_DIR for consistency with admin_service
+    TEMP_UPLOAD_DIR: Path = Field(default_factory=lambda: DEFAULT_TEMP_UPLOAD_DIR)
 
     # Pydantic settings configuration
     model_config = SettingsConfigDict(
@@ -82,7 +86,7 @@ from typing import Any # Add this if not already present from pydantic or other 
 from pathlib import Path # Add this if not already present
 
 # A check to ensure PROJECT_DATA_ROOT is correctly resolved, especially if default is used.
-if settings.PROJECT_DATA_ROOT == Settings.PROJECT_DATA_ROOT_DEFAULT:
+if settings.PROJECT_DATA_ROOT == DEFAULT_PROJECT_DATA_ROOT: # Compare with the module-level constant
     print(f"Using default project data root: {settings.PROJECT_DATA_ROOT}")
     if not settings.PROJECT_DATA_ROOT.is_absolute():
         print(f"Warning: Default project data root '{settings.PROJECT_DATA_ROOT}' is not an absolute path. "

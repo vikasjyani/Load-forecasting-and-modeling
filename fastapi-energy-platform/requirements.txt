@@ -51,3 +51,5 @@ pytest-cov # For coverage
 # mypy
 # black
 # isort
+
+psutil>=5.9.0 # For system monitoring (used in AdminService)

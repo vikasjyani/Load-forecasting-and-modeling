@@ -1,11 +1,6 @@
-# Database setup (if using DB)
-# Example:
-# from sqlalchemy import create_engine
-# from sqlalchemy.ext.declarative import declarative_base
-# from sqlalchemy.orm import sessionmaker
-# from ..config import DATABASE_URL
-
-# engine = create_engine(DATABASE_URL)
-# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-# Base = declarative_base()
-print("Defining database setup...")
+# This file is intentionally left blank.
+# The application uses a file-based storage system for all project data,
+# as per requirements, and does not utilize a traditional database (e.g., SQL).
+# Core data persistence logic is handled by services and utility functions
+# interacting directly with the filesystem, primarily within the
+# app_settings.PROJECT_DATA_ROOT directory.

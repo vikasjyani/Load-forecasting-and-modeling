@@ -141,21 +141,13 @@ async def get_load_profile_analysis_service(
     """
     return LoadProfileAnalysisService(project_data_root=project_data_root)
 
-async def get_admin_service(
-    settings_obj: Annotated[Settings, Depends(get_settings)], # Renamed from settings to avoid clash
-    project_data_root: Annotated[Path, Depends(get_project_data_root)]
-) -> AdminService:
+async def get_admin_service() -> AdminService:
     """
     Dependency to get an instance of AdminService.
-
-    Args:
-        settings_obj (Settings): The application settings.
-        project_data_root (Path): The root directory for project data.
-
-    Returns:
-        AdminService: An instance of the admin service.
+    AdminService initializes itself using global settings.
     """
-    return AdminService(settings=settings_obj, project_data_root=project_data_root)
+    # AdminService constructor currently takes no arguments and uses global settings.
+    return AdminService()
 
 async def get_color_service() -> ColorService:
     """

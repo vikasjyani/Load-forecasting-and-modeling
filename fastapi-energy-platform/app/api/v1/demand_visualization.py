@@ -174,31 +174,20 @@ async def generate_or_get_consolidated_results_api(
     service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
-        if payload: # If payload provided, generate new
-            result = await service.generate_consolidated_results(
-                project_name, scenario_name, payload.model_selection,
-                [item.model_dump() for item in payload.td_losses],
-                payload.filters.model_dump(exclude_none=True) if payload.filters else None
-            )
-        else: # Attempt to load existing consolidated results (service needs method for this)
-            # This part requires a new service method like `get_existing_consolidated_results`
-            # For now, let's assume if no payload, it's an error or we try to generate with defaults.
-            # Or, we could make payload required for POST.
-            # For simplicity, let's assume POST always means generate. GET for existing.
-            # This endpoint should ideally be just POST for generation.
-            # A GET endpoint for consolidated results would be separate.
-            # Refactoring Flask's POST that also gets if exists is tricky.
-            # For now, require payload for POST.
-             if not payload:
-                raise HTTPException(status_code=422, detail="Payload required to generate consolidated results.")
-             result = await service.generate_consolidated_results(
-                project_name, scenario_name, payload.model_selection,
-                [item.model_dump() for item in payload.td_losses],
-                payload.filters.model_dump(exclude_none=True) if payload.filters else None
-            )
+        # This POST endpoint is now solely for generating/regenerating consolidated results.
+        # A separate GET endpoint would be needed to fetch existing pre-generated results if desired.
+        if not payload: # Payload is optional, but if not provided, it's a bad request for generation.
+            raise HTTPException(status_code=422, detail="Payload required to generate consolidated results.")
 
+        result = await service.generate_consolidated_results(
+            project_name,
+            scenario_name,
+            payload.model_selection,
+            [item.model_dump() for item in payload.td_losses], # Convert TdLossItem to dict
+            payload.filters.model_dump(exclude_none=True) if payload.filters else None
+        )
         return result
-    except ProcessingError as e:
+    except ProcessingError as e: # Errors from the service during processing
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -233,14 +222,27 @@ async def export_scenario_data_api(
     service: DemandVisualizationService = Depends(get_demand_visualization_service_dependency)
 ):
     try:
-        filter_dict = export_params.filters.model_dump(exclude_none=True) if export_params.filters else {}
-        file_path = await service.export_data(project_name, scenario_name, export_params.data_type, filter_dict)
+        filter_dict = export_params.filters.model_dump(exclude_none=True) if export_params.filters and export_params.filters else {}
 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        download_name = f"{safe_filename(scenario_name)}_{export_params.data_type}_{timestamp}.csv"
+        # Service's export_data method returns a Path object to the temporary CSV file
+        temp_file_path = await service.export_data(
+            project_name,
+            scenario_name,
+            export_params.data_type,
+            filter_dict
+        )
 
-        return FileResponse(path=file_path, filename=download_name, media_type='text/csv')
-    except FileNotFoundError as e:
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        download_filename = f"{safe_filename(scenario_name)}_{export_params.data_type}_export_{timestamp}.csv"
+
+        # Ensure temp_file_path is absolute, or handle relative paths correctly for FileResponse
+        # If service returns an absolute path, this is fine.
+        return FileResponse(
+            path=str(temp_file_path),
+            filename=download_filename,
+            media_type='text/csv'
+        )
+    except FileNotFoundError as e: # Raised by service if source data for export is missing
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e: # For invalid data_type
         raise HTTPException(status_code=400, detail=str(e))

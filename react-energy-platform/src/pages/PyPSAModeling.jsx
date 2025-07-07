@@ -510,11 +510,13 @@ const renderExtractedDataTable = (dataArray, keyPrefix, headers) => {
 
   return (
     <div style={{fontFamily: 'Arial, sans-serif', color: '#333', padding: '20px'}}>
+      {/* TODO: Replace hardcoded projectName with value from global context or props */}
       <h2 style={{color: '#0056b3', borderBottom: '2px solid #007bff', paddingBottom: '10px', marginBottom: '20px'}}>
-        PyPSA Power System Modeling: Project <Input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Default_Project" />
+        PyPSA Power System Modeling: Project <strong>{projectName}</strong>
       </h2>
       <AlertMessage message={errorMessages.general} type="error" />
 
+      {/* UI Helper components are defined locally. In a larger app, move to a shared directory e.g., src/components/ui */}
       <Section title="PyPSA System Status">
         {loadingStates.systemStatus && <p>Loading system status...</p>}
         <AlertMessage message={errorMessages.systemStatus} type="error" />
@@ -571,8 +573,12 @@ const renderExtractedDataTable = (dataArray, keyPrefix, headers) => {
           <FormRow label="UI Settings Overrides (JSON)">
             <textarea value={uiOverrides} onChange={e => setUiOverrides(e.target.value)} rows={3} placeholder='e.g., {"solving": {"solver_options": {"threads": 4}}}' style={{padding: '8px', border: '1px solid #ced4da', borderRadius: '4px', flexGrow: 1, fontFamily: 'monospace', width: '100%', boxSizing: 'border-box'}}/>
           </FormRow>
-          <Button type="submit" disabled={loadingStates.run || !projectName || !runScenarioName || (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED')}>
-            {loadingStates.run ? 'Starting...' : (jobId && jobStatus?.status !== 'COMPLETED' && jobStatus?.status !== 'FAILED' && jobStatus?.status !== 'CANCELLED' ? `Running (${jobStatus?.status})...` : 'Run Simulation')}
+          <Button
+            type="submit"
+            disabled={loadingStates.run || !projectName || !runScenarioName || (jobId && jobStatus && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(jobStatus.status))}
+            title={ (jobId && jobStatus && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(jobStatus.status)) ? "A job is currently running or starting." : (!projectName || !runScenarioName ? "Project and Scenario name required." : "Run PyPSA Simulation")}
+          >
+            {loadingStates.run ? 'Starting...' : (jobId && jobStatus && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(jobStatus.status) ? `Job Active (${jobStatus.status})...` : 'Run Simulation')}
           </Button>
           <AlertMessage message={errorMessages.run} type="error" />
         </form>
@@ -580,13 +586,22 @@ const renderExtractedDataTable = (dataArray, keyPrefix, headers) => {
 
       {jobId && (
         <Section title={`Job Status (ID: ${jobId})`}>
-          {loadingStates.status && !jobStatus?.status && <p>Fetching status...</p>}
+          {loadingStates.status && (!jobStatus || !jobStatus.status) && <p>Fetching status...</p>}
           <AlertMessage message={errorMessages.status} type="error" />
-          {jobStatus ? <PreFormatted data={jobStatus} /> : <p>No status data yet.</p>}
-          <h4>Job Log Highlights:</h4>
+          {jobStatus ? (
+            <>
+              <PreFormatted data={jobStatus} />
+              {jobStatus.status && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(jobStatus.status) && (
+                <Button onClick={handleCancelJob} variant="danger" disabled={loadingStates.status} style={{marginTop: '10px'}}>
+                  {loadingStates.status ? 'Cancelling...' : 'Cancel Running Job'}
+                </Button>
+              )}
+            </>
+          ) : <p>No status data yet.</p>}
+          <h4>Job Log Highlights (Last 100 entries):</h4>
           {jobLog.length > 0 ? (
             <ul style={{fontSize: '0.8em', maxHeight: '200px', overflowY: 'auto', backgroundColor: '#f8f9fa', padding: '10px', border: '1px solid #eee', borderRadius: '4px'}}>
-              {jobLog.map((logEntry, index) => <li key={index} style={{borderBottom: '1px dotted #ccc', paddingBottom: '3px', marginBottom: '3px'}}>{logEntry}</li>)}
+              {jobLog.slice(-100).map((logEntry, index) => <li key={index} style={{borderBottom: '1px dotted #ccc', paddingBottom: '3px', marginBottom: '3px'}}>{logEntry}</li>)}
             </ul>
           ) : <p>No log entries yet.</p>}
         </Section>
