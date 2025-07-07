@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Global feature configurations for KSEB Energy Platform"
+  },
+  "feature_categories": {
+    "demand_forecasting": {
+      "name": "Demand Forecasting",
+      "description": "Features related to energy demand forecasting.",
+      "features": [
+        "advanced_stats_analysis",
+        "mlr_custom_config",
+        "weather_correlation_module"
+      ]
+    },
+    "load_profile": {
+      "name": "Load Profile Management",
+      "description": "Features for load profile generation and analysis.",
+      "features": [
+        "stl_decomposition_advanced",
+        "profile_comparison_tool_v2"
+      ]
+    },
+    "pypsa_integration": {
+      "name": "PyPSA Integration",
+      "description": "Features for PyPSA power system modeling.",
+      "features": [
+        "custom_pypsa_scripts",
+        "network_graph_visualization"
+      ]
+    },
+    "reporting": {
+        "name": "Reporting & Export",
+        "description": "Advanced reporting and data export capabilities.",
+        "features": ["pdf_report_generation", "excel_export_custom_templates"]
+    }
+  },
+  "feature_definitions": {
+    "advanced_stats_analysis": {
+      "description": "Enable advanced statistical analysis tools in demand forecasting.",
+      "enabled": true,
+      "category": "demand_forecasting"
+    },
+    "mlr_custom_config": {
+      "description": "Allow detailed configuration of MLR model parameters.",
+      "enabled": false,
+      "category": "demand_forecasting"
+    },
+    "weather_correlation_module": {
+      "description": "Activate module for correlating weather data with demand.",
+      "enabled": true,
+      "category": "demand_forecasting"
+    },
+    "stl_decomposition_advanced": {
+      "description": "Use advanced options for STL decomposition in load profiles.",
+      "enabled": true,
+      "category": "load_profile"
+    },
+    "profile_comparison_tool_v2": {
+      "description": "Enable version 2 of the load profile comparison tool.",
+      "enabled": false,
+      "category": "load_profile"
+    },
+    "custom_pypsa_scripts": {
+      "description": "Allow users to upload and run custom PyPSA scripts.",
+      "enabled": false,
+      "category": "pypsa_integration"
+    },
+    "network_graph_visualization": {
+      "description": "Enable interactive network graph visualizations for PyPSA models.",
+      "enabled": true,
+      "category": "pypsa_integration"
+    },
+    "pdf_report_generation": {
+        "description": "Enable PDF report generation for various modules.",
+        "enabled": true,
+        "category": "reporting"
+    },
+    "excel_export_custom_templates": {
+        "description": "Allow use of custom Excel templates for data exports.",
+        "enabled": false,
+        "category": "reporting"
+    }
+  }
+}
